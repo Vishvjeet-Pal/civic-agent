@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     secret_key: str
     api_key_header: str = "X-API-Key"
 
+    # AI Model Providers (New Section)
+    qwen_api_key: str
+    gemini_api_key: str
+    groq_api_key: str
+
     # Database
     postgres_host: str
     postgres_port: int = 5432

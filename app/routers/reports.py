@@ -76,6 +76,8 @@ async def submit_report(
 
     logger.info("report_received", report_id=str(report.id), filename=file.filename)
 
+    # await redis.rpush("perception:queue", str(report.id))
+
     return ReportResponse(
         id=report.id,
         status=report.status.value,
