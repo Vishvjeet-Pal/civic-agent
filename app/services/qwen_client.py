@@ -121,7 +121,6 @@ async def call_qwen_vision(image_bytes: bytes, mime_type: str = "image/jpeg") ->
                 if not content:
                     raise ValueError(f"Empty response from API: {raw_data}")
 
-                # Strip potential markdown code fences
                 clean_json = content.strip().removeprefix("```json").removesuffix("```").strip()
                 
                 parsed = QwenResponse.model_validate_json(clean_json)

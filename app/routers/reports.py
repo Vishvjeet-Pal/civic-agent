@@ -2,13 +2,13 @@ import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 import redis.asyncio as aioredis
-
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.redis import get_redis
 from app.db.session import get_db
 from app.db.models import DeadLetterQueue, LifecycleEvent, Report, ReportStatus
 from app.schemas.report import IncomingReport, ReportResponse
+from app.services.image_store import save_image
 
 logger=get_logger(__name__)
 router=APIRouter(prefix="/reports", tags=["reports"])
@@ -75,8 +75,8 @@ async def submit_report(
     await db.refresh(report)
 
     logger.info("report_received", report_id=str(report.id), filename=file.filename)
-
-    # await redis.rpush("perception:queue", str(report.id))
+    save_image(report.id, contents, file.content_type)
+    await redis.rpush("perception:queue", str(report.id))
 
     return ReportResponse(
         id=report.id,
