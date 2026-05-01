@@ -1,5 +1,5 @@
 services:
-  civic-agent-api:
+  api:
     build: .
     ports:
       - "8000:8000"
@@ -10,17 +10,15 @@ services:
       - REDIS_HOST=redis
       - IMAGE_STORE_PATH=/images
     depends_on:
-      civic-agent-postgres:
-        condition: service_healthy
-      civic-agent-redis:
-        condition: service_healthy
+      - postgres
+      - redis
     volumes:
       - ./app:/app/app
       - imagedata:/images
     extra_hosts:
       - "host.docker.internal:host-gateway"  # reach LM Studio on host machine
 
-  civic-agent-worker:
+  perception_worker:
     build: .
     command: ["python", "-m", "app.workers.perception_worker"]
     env_file: .env
@@ -30,17 +28,31 @@ services:
       - REDIS_HOST=redis
       - IMAGE_STORE_PATH=/images
     depends_on:
-      civic-agent-postgres:
-        condition: service_healthy
-      civic-agent-redis:
-        condition: service_healthy
+      - postgres
+      - redis
     volumes:
       - ./app:/app/app
       - imagedata:/images
     extra_hosts:
       - "host.docker.internal:host-gateway"  # reach LM Studio on host machine
   
-  civic-agent-postgres:
+  knowledge_worker:
+    build: .
+    command: ["python", "-m", "app.workers.knowledge_worker"]
+    env_file: .env
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - REDIS_HOST=redis
+      - IMAGE_STORE_PATH=/images
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - chroma_data: /app/chroma_db
+      - ./municipal_docs: /app/municipal_docs:ro
+
+  postgres:
     image: postgres:16-alpine
     networks:
       default:
@@ -60,7 +72,7 @@ services:
       timeout: 5s
       retries: 5
 
-  civic-agent-redis:
+  redis:
     image: redis:7-alpine
     networks:
       default:
@@ -78,3 +90,4 @@ volumes:
   pgdata:
   redisdata:
   imagedata:
+  chroma_data:
