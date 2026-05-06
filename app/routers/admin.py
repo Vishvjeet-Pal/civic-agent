@@ -60,18 +60,30 @@ async def approve_review(report_id: str, db: AsyncSession=Depends(get_db)):
         raise HTTPException(status_code=404, detail="Report not found")
 
     from_status=report.status
-    report.status=ReportStatus.ANALYZED
+
+    pool = get_redis_pool()
+    redis_client = aioredis.Redis(connection_pool=pool)
+    
+    # Determine which phase to restart
+    if report.action_plan:
+        # Knowledge phase was complete, proceed to action
+        queue_key = settings.action_queue_key
+        detail = "Manually approved by human reviewer — enqueued for action"
+    else:
+        # Perception phase was incomplete or low confidence, proceed to knowledge
+        queue_key = settings.knowledge_queue_key
+        detail = "Manually approved by human reviewer — enqueued for knowledge processing"
+
+    report.status = ReportStatus.ANALYZED
     db.add(LifecycleEvent(
         report_id=report.id,
         from_status=from_status,
         to_status=ReportStatus.ANALYZED,
-        detail="Manually approved by human reviewer"
+        detail=detail
     ))
     await db.commit()
 
-    pool = get_redis_pool()
-    redis_client = aioredis.Redis(connection_pool=pool)
-    await redis_client.rpush(settings.knowledge_queue_key, str(report.id))
+    await redis_client.rpush(queue_key, str(report.id))
     await redis_client.aclose()
     return {"status":"approved", "report_id":report_id}
 

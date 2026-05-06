@@ -943,6 +943,16 @@
       <p class="text-xs text-slate-400 font-semibold uppercase mb-1">Report ID</p>
       <p class="mono text-xs text-slate-500 break-all">${full.id}</p>
     </div>
+
+    ${full.status === 'PENDING_REVIEW' ? `
+    <div class="pt-4">
+      <button onclick="approveReview('${full.id}')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-2xl shadow-xl shadow-emerald-100 transition-all flex items-center justify-center gap-2 group">
+        <i data-lucide="check-circle" class="w-5 h-5 group-hover:scale-110 transition-transform"></i>
+        Approve Report for Action
+      </button>
+      <p class="text-[10px] text-slate-400 text-center mt-2 uppercase tracking-widest font-semibold">Proceed to municipal filing</p>
+    </div>` : ''}
+
   `;
       lucide.createIcons();
     }
@@ -1232,6 +1242,7 @@
       <p class="text-xs text-slate-400 uppercase font-semibold mb-1">Report ID</p>
       <p class="mono text-xs text-slate-500 break-all">${r.id}</p>
     </div>
+
   `;
       lucide.createIcons();
     }
