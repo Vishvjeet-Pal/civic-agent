@@ -1,0 +1,22 @@
+{
+    "Chandigarh": {
+        "city_name": "Chandigarh",
+        "authority": "Municipal Corporation Chandigarh",
+        "department_routing": {
+            "fallen_tree_blockage": {
+                "issue_description": "Road blockage or danger due to fallen/overgrown trees",
+                "primary_contact": "abc@gmail",
+                "department": "Horticulture Division",
+                "designated_officer": "Executive Engineer (Horticulture)",
+                "backup_contact": "xcv@email"
+            },
+            "illegal_dumping": {
+                "issue_description": "Illegal dumping of debris, malba, or unidentified garbage on MC land",
+                "primary_contact": "hfd@gmail",
+                "department": "Road Division / Sanitation",
+                "designated_officer": "SDE (B&R) / Nodal Officer",
+                "backup_contact": "hfd@email"
+            }
+        }
+    }
+}
