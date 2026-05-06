@@ -64,6 +64,7 @@ services:
         condition: service_healthy
     volumes:
       - ./app:/app/app
+      - ./municipal_docs:/app/municipal_docs:ro  # Add this line
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

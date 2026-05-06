@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 import redis.asyncio as aioredis
 from app.core.config import get_settings
@@ -31,6 +31,7 @@ async def _check_rate_limit(client_id: str, redis: aioredis.Redis) -> None:
 @router.post("/", response_model=ReportResponse, status_code=status.HTTP_202_ACCEPTED)
 async def submit_report(
     file: UploadFile = File(...),
+    address: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis)
     ):
@@ -46,7 +47,8 @@ async def submit_report(
     try:
         IncomingReport(
             filename=file.filename or "unknown",
-            content_type=file.content_type     
+            content_type=file.content_type,
+            address=address
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_UNPROCESSABLE_ENTITY, detail=str(exc))
@@ -60,7 +62,8 @@ async def submit_report(
 
     report=Report(
         original_filename=file.filename or "unknown",
-        status=ReportStatus.RECEIVED
+        status=ReportStatus.RECEIVED,
+        provided_address=address
     )
     db.add(report)
     await db.flush()

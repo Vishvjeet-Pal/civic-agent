@@ -13,6 +13,7 @@ The existing QwenResponse / Issue schema is preserved so no other code changes.
 import asyncio
 import base64
 import json
+from pathlib import Path
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError, AliasChoices
@@ -22,28 +23,44 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-SYSTEM_PROMPT = """You are an expert AI Municipal Inspector.
-Analyze the image to identify civic issues (potholes, garbage, water leaks, etc.).
+def _get_mail_categories() -> str:
+    """Load issue categories from mails.json for prompt injection."""
+    mails_path = Path("municipal_docs/mails.json")
+    if not mails_path.exists():
+        return "fallen_tree_blockage, illegal_dumping"
+    try:
+        with open(mails_path, "r") as f:
+            data = json.load(f)
+        categories = set()
+        for city_data in data.values():
+            categories.update(city_data.get("department_routing", {}).keys())
+        return ", ".join(sorted(categories))
+    except Exception:
+        return "fallen_tree_blockage, illegal_dumping"
+
+SYSTEM_PROMPT_TEMPLATE = """You are an expert AI Municipal Inspector.
+Analyze the image to identify civic issues.
+Valid Issue Categories: {categories}
 
 For each issue, provide:
-1. Category (e.g., 'Road Infrastructure', 'Sanitation')
+1. Type (MUST be one of the Valid Issue Categories listed above if it fits)
 2. Bounding box coordinates [ymin, xmin, ymax, xmax] scaled 0-1000.
 3. Severity score from 1 (minor) to 5 (hazardous).
 4. A brief technical description.
 
 YOU MUST RESPOND ONLY WITH VALID JSON. No markdown, no preamble.
-{
+{{
   "summary": "Technical overview of the scene",
   "confidence_score": 0.95,
   "issues": [
-    {
-      "type": "pothole",
+    {{
+      "type": "category_name",
       "bbox": [550, 210, 670, 390],
       "severity": 4,
-      "description": "Large pothole in middle of lane, hazard to motorcyclists."
-    }
+      "description": "Large pothole in middle of lane..."
+    }}
   ]
-}
+}}
 
 If no issues are found, return 'issues': [] and 'summary': 'No issues detected.'"""
 
@@ -91,6 +108,7 @@ async def call_qwen_vision(image_bytes: bytes, mime_type: str = "image/jpeg") ->
     data_url = f"data:image/jpeg;base64,{b64_image}"
 
     # OpenAI-compatible chat/completions payload
+    categories = _get_mail_categories()
     payload = {
         "model": settings.lmstudio_model,
         "stream": False,
@@ -100,7 +118,7 @@ async def call_qwen_vision(image_bytes: bytes, mime_type: str = "image/jpeg") ->
         "messages": [
             {
                 "role": "system",
-                "content": SYSTEM_PROMPT,
+                "content": SYSTEM_PROMPT_TEMPLATE.format(categories=categories),
             },
             {
                 "role": "user",

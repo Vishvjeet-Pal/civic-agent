@@ -60,13 +60,16 @@ async def run_action(report_id: uuid.UUID, db: AsyncSession, redis: aioredis.Red
         await _transition(db, report, ReportStatus.FAILED, f"Llama tool selection failed: {exc}")
         await db.commit()
         return False
-    resolved_address: str | None = None
+    resolved_address: str | None = report.provided_address
     tool_results: dict[str, object] = {}
 
     for call in tool_calls:
         name = call["name"]
         try:
             if name == "reverse_geocode":
+                if resolved_address:
+                    logger.info("geocode_skipped_address_provided", report_id=str(report_id))
+                    continue
                 if perception.gps_latitude is None:
                     logger.info("geocode_skipped_no_gps", report_id=str(report_id))
                     continue

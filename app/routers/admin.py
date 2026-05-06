@@ -100,6 +100,7 @@ async def get_full_report(report_id: str, db: AsyncSession = Depends(get_db)):
         "filename": report.original_filename,
         "gps": {"lat": report.gps_latitude, "lon": report.gps_longitude},
         "captured_at": report.captured_at.isoformat() if report.captured_at else None,
+        "provided_address": report.provided_address,
         "confidence_score": report.confidence_score,
         "perception_result": report.perception_result,
         "action_plan": report.action_plan,

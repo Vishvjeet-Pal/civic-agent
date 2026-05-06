@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator, AliasCh
 class IncomingReport(BaseModel):
     filename: str = Field(..., min_length=1, max_length=255)
     content_type: str = Field(..., pattern=r"^image/(jpeg|png|webp)$")
+    address: str | None = None
 
 class BoundingBox(BaseModel):
     ymin: int = Field(..., ge=0, le=1000)
@@ -80,6 +81,7 @@ class ReportDetail(BaseModel):
     gps_latitude: float | None
     gps_longitude: float | None
     captured_at: datetime | None
+    provided_address: str | None
     confidence_score: float | None
     perception_result: dict[str, Any] | None
     action_plan: dict[str, Any] | None

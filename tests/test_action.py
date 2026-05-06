@@ -101,6 +101,7 @@ async def test_run_action_routes_to_dlq_on_llama_failure():
     mock_report = MagicMock()
     mock_report.id = report_id
     mock_report.status = MagicMock(value="ANALYZED")
+    mock_report.provided_address = None
     mock_report.action_plan = make_plan(report_id).model_dump(mode="json")
     mock_report.perception_result = make_perception(report_id).model_dump(mode="json")
 

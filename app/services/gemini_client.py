@@ -6,6 +6,7 @@ Retries once with a stricter prompt on validation failure, then routes to human 
 
 import asyncio
 import json
+from pathlib import Path
 from google import genai
 from google.genai import types
 from app.core.config import get_settings
@@ -14,7 +15,22 @@ from app.schemas.report import ActionPlan, PerceptionResult, RecommendedTool
 
 logger = get_logger(__name__)
 
-SYSTEM_PROMPT = """You are a legal compliance engine for a municipal civic reporting system.
+def _get_mail_categories() -> str:
+    """Load issue categories from mails.json for prompt injection."""
+    mails_path = Path("municipal_docs/mails.json")
+    if not mails_path.exists():
+        return "fallen_tree_blockage, illegal_dumping"
+    try:
+        with open(mails_path, "r") as f:
+            data = json.load(f)
+        categories = set()
+        for city_data in data.values():
+            categories.update(city_data.get("department_routing", {}).keys())
+        return ", ".join(sorted(categories))
+    except Exception:
+        return "fallen_tree_blockage, illegal_dumping"
+
+SYSTEM_PROMPT_TEMPLATE = """You are a legal compliance engine for a municipal civic reporting system.
 You will receive:
 1. A list of detected civic issues with severity scores (1-5).
 2. Relevant excerpts from the municipal code.
@@ -23,15 +39,15 @@ Your job is to produce a legally-grounded action plan.
 
 YOU MUST respond ONLY with a JSON object. No markdown, no preamble.
 Schema:
-{
+{{
   "report_id": "UUID string",
-  "issue_type": "string",
+  "issue_type": "string (MUST BE ONE OF: {categories})",
   "statute_ref": "string or null",
   "severity": "low | medium | high | critical | null",
   "recommended_tools": ["send_civic_report" | "log_to_official_ledger" | "reverse_geocode"],
   "context_summary": "string",
   "requires_human_review": boolean
-}
+}}
 
 Severity mapping from detected issue scores:
     1-2 → low, 3 → medium, 4 → high, 5 → critical. Set to null if no clear issues.
@@ -129,10 +145,12 @@ async def build_action_plan(perception: PerceptionResult, context_chunks: list[s
     """
 
     user_prompt = _build_user_prompt(perception, context_chunks)
+    categories = _get_mail_categories()
+    base_system = SYSTEM_PROMPT_TEMPLATE.format(categories=categories)
 
     for attempt in range(1, 3):
-        strict_system = SYSTEM_PROMPT if attempt == 1 else (
-            SYSTEM_PROMPT + "\n\nCRITICAL: Your previous response failed JSON validation. "
+        strict_system = base_system if attempt == 1 else (
+            base_system + "\n\nCRITICAL: Your previous response failed JSON validation. "
             "Return ONLY the raw JSON object. Absolutely no extra text."
         )
         raw = "<no response>"

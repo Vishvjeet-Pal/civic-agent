@@ -27,6 +27,7 @@ class Report(Base):
     gps_latitude: Mapped[float | None]=mapped_column(Float)
     gps_longitude: Mapped[float | None]=mapped_column(Float)
     captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    provided_address: Mapped[str | None] = mapped_column(Text)
 
     perception_result: Mapped[dict | None] = mapped_column(JSONB)
     confidence_score: Mapped[float | None] = mapped_column(Float)

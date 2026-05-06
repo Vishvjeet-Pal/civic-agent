@@ -4,6 +4,8 @@ Each tool is an async function with its own retry wrapper.
 """
 
 import asyncio
+import json
+from pathlib import Path
 import smtplib
 import uuid
 from email.mime.multipart import MIMEMultipart
@@ -60,6 +62,80 @@ async def reverse_geocode(latitude: float, longitude: float) -> dict[str, Any]:
     logger.info("geocode_complete", address=address[:60])
     return{"address": address, "raw": data.get("address", {})}
 
+def _get_department_email(issue_type: str) -> str:
+    """
+    Robustly look up the primary contact for a given issue type in mails.json.
+    Tries exact match, then substring match on keys, then search in descriptions.
+    """
+    settings = get_settings()
+    default_email = settings.municipal_email
+    
+    mails_path = Path("municipal_docs/mails.json")
+    if not mails_path.exists():
+        logger.warning("mails_json_not_found", path=str(mails_path))
+        return default_email
+        
+    try:
+        with open(mails_path, "r") as f:
+            data = json.load(f)
+            
+        # Normalize input
+        query = issue_type.lower().replace("_", " ").replace("-", " ").strip()
+        query_words = set(query.split())
+        stop_words = {"and", "or", "the", "to", "of", "in", "with", "due", "at"}
+        query_keywords = query_words - stop_words
+        
+        candidates = [] # List of (score, email)
+        
+        for city_data in data.values():
+            routing = city_data.get("department_routing", {})
+            
+            for key, info in routing.items():
+                norm_key = key.lower().replace("_", " ").replace("-", " ")
+                description = info.get("issue_description", "").lower().replace("/", " ").replace("-", " ")
+                contact = info.get("primary_contact")
+                
+                if not contact:
+                    continue
+                    
+                # 1. Exact match (Score 0)
+                if query == norm_key:
+                    logger.info("exact_match_found", issue_type=issue_type, email=contact)
+                    return contact
+                
+                # 2. Key substring match (Score 10)
+                if query in norm_key or norm_key in query:
+                    candidates.append((10, contact))
+                    continue
+
+                # 3. Word overlap with key (Score 20 - matches)
+                key_words = set(norm_key.split()) - stop_words
+                intersection_key = query_keywords.intersection(key_words)
+                if intersection_key:
+                    # Better score for more word matches
+                    score = 20 - len(intersection_key)
+                    candidates.append((score, contact))
+                    
+                # 4. Word overlap with description (Score 30 - matches)
+                desc_words = set(description.split()) - stop_words
+                intersection_desc = query_keywords.intersection(desc_words)
+                if intersection_desc:
+                    score = 30 - len(intersection_desc)
+                    candidates.append((score, contact))
+        
+        if candidates:
+            # Sort by priority score (lower is better)
+            candidates.sort(key=lambda x: x[0])
+            best_email = candidates[0][1]
+            logger.info("fuzzy_match_found", issue_type=issue_type, email=best_email, best_score=candidates[0][0])
+            return best_email
+
+        logger.info("department_email_not_found", issue_type=issue_type)
+        return default_email
+    except Exception as exc:
+        logger.error("mails_json_parse_failed", error=str(exc))
+        return default_email
+
 def _build_email_body(plan: ActionPlan, perception: PerceptionResult, address: str | None) -> str:
     issues_html = "".join(
         f"<li><strong>{i.type}</strong> (severity {i.severity}/5): {i.description}</li>"
@@ -103,7 +179,10 @@ async def send_civic_report(plan: ActionPlan, perception: PerceptionResult, addr
     severity_str = plan.severity.upper() if plan.severity else "UNKNOWN"
     msg["Subject"] = f"[CivicAgent] {severity_str} - {plan.issue_type.title()} at {address or 'Unknown Location'}"
     msg["From"] = settings.smtp_user
-    msg["To"] = settings.municipal_email
+    
+    # Dynamic routing
+    to_email = _get_department_email(plan.issue_type)
+    msg["To"] = to_email
     msg["X-Report_ID"] = str(plan.report_id)
 
     msg.attach(MIMEText(_build_email_body(plan, perception, address), "html"))
@@ -122,10 +201,10 @@ async def send_civic_report(plan: ActionPlan, perception: PerceptionResult, addr
     logger.info(
         "civic_report_sent",
         report_id=str(plan.report_id),
-        to=settings.municipal_email,
+        to=to_email,
         severity=plan.severity,
     )
-    return {"sent":True, "to":settings.municipal_email}
+    return {"sent":True, "to":to_email}
 
 @_with_retry(max_attempts=3)
 async def log_to_official_ledger(report_id: uuid.UUID, plan: ActionPlan, address: str | None, db,) -> dict[str, Any]:
