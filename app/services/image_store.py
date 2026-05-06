@@ -26,3 +26,13 @@ def load_image(report_id: uuid.UUID) -> tuple[bytes, str] | None:
         if path.exists():
             return path.read_bytes(), mime
     return None
+
+def delete_image(report_id: uuid.UUID) -> bool:
+    deleted = False
+    for ext in _MIME_TO_EXT.values():
+        path = _BASE_PATH / f"{report_id}{ext}"
+        if path.exists():
+            path.unlink()
+            deleted = True
+            logger.info("image_deleted", report_id=str(report_id), path=str(path))
+    return deleted

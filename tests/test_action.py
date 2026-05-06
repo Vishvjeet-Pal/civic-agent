@@ -85,7 +85,7 @@ async def test_tool_retry_on_failure():
 
 
 def test_tool_schemas_cover_all_tools():
-    from app.services.mcp_tools import TOOL_SCHEMAS
+    from app.schemas.tools import TOOL_SCHEMAS
     names = {s["function"]["name"] for s in TOOL_SCHEMAS}
     assert "reverse_geocode" in names
     assert "send_civic_report" in names
@@ -114,3 +114,39 @@ async def test_run_action_routes_to_dlq_on_llama_failure():
 
     assert result is False
     mock_db.add.assert_called()
+
+@pytest.mark.asyncio
+async def test_run_action_automatic_geocoding():
+    from app.services.action import run_action
+    import uuid as _uuid
+
+    report_id = _uuid.uuid4()
+    mock_report = MagicMock()
+    mock_report.id = report_id
+    mock_report.status = MagicMock(value="ANALYZED")
+    # Coordinates in provided_address
+    mock_report.provided_address = "30.7046, 76.7179"
+    mock_report.action_plan = make_plan(report_id).model_dump(mode="json")
+    mock_report.perception_result = make_perception(report_id).model_dump(mode="json")
+
+    mock_db = AsyncMock()
+    mock_db.get.return_value = mock_report
+    mock_redis = AsyncMock()
+
+    # Mock reverse_geocode and get_tool_calls
+    with patch("app.services.action.reverse_geocode", new_callable=AsyncMock) as mock_geo, \
+         patch("app.services.action.get_tool_calls", new_callable=AsyncMock) as mock_llama:
+        
+        mock_geo.return_value = {"address": "123 Geocoded St, Chandigarh", "raw": {}}
+        mock_llama.return_value = [
+            {"name": "send_civic_report", "arguments": {}}
+        ]
+
+        result = await run_action(report_id, mock_db, mock_redis)
+
+    assert result is True
+    # Verify geocode was called automatically
+    mock_geo.assert_called_once_with(latitude=30.7046, longitude=76.7179)
+    # Verify the result contains the resolved address
+    assert mock_report.action_result["resolved_address"] == "123 Geocoded St, Chandigarh"
+    assert "reverse_geocode" in mock_report.action_result

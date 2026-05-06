@@ -17,11 +17,9 @@ SYSTEM_PROMPT = """You are an action execution agent for a civic reporting syste
 You receive a validated ActionPlan JSON and must call the appropriate tools
 in the correct order to file the civic report:
 
-1. If GPS coordinates are available → call reverse_geocode FIRST.
-2. Always call send_civic_report to notify the municipal department.
-3. Always call log_to_official_ledger last to close the record.
+1. Always call send_civic_report to notify the municipal department.
+2. Always call log_to_official_ledger last to close the record.
 
-Do not skip any tool listed in recommended_tools.
 Do not call tools not listed in recommended_tools.
 Call tools one at a time — never in parallel."""
 
@@ -53,8 +51,8 @@ async def get_tool_calls(plan: ActionPlan, perception: PerceptionResult) -> list
         {"role":"user", "content":_build_user_message(plan, perception)},
     ]
 
-    # Filter tool schemas to only those in the plan
-    allowed = {t.value for t in plan.recommended_tools}
+    # Filter tool schemas to only those in the plan (excluding reverse_geocode which is handled automatically)
+    allowed = {t.value for t in plan.recommended_tools if t.value != "reverse_geocode"}
     active_schemas = [s for s in TOOL_SCHEMAS if s["function"]["name"] in allowed]
 
     collected_calls: list[dict[str, Any]] = []

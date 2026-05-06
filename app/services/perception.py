@@ -122,6 +122,7 @@ async def run_perception(report_id: uuid.UUID, image_bytes: bytes, mime_type: st
     gps_latitude=exif.latitude,
     gps_longitude=exif.longitude,
     captured_at=exif.captured_at,
+    provided_address=report.provided_address,
     low_confidence=False,
     )
 

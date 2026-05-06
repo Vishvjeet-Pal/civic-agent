@@ -3,6 +3,8 @@ Action service: loads ActionPlan + PerceptionResult, calls Groq/Llama
 for tool selection, executes MCP tools in order, handles retries and DLQ.
 """
 import uuid
+import re
+from typing import Any
 
 import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +30,19 @@ async def _transition(db: AsyncSession, report: Report, to: ReportStatus, detail
         detail=detail, 
     ))
     await db.flush()
+
+def _parse_coordinates(address: str) -> tuple[float, float] | None:
+    if not address:
+        return None
+    # Matches "lat, lon" or "lat,lon"
+    pattern = r'^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$'
+    if not re.match(pattern, address.strip()):
+        return None
+    try:
+        lat_s, lon_s = address.split(',')
+        return float(lat_s.strip()), float(lon_s.strip())
+    except Exception:
+        return None
 
 async def run_action(report_id: uuid.UUID, db: AsyncSession, redis: aioredis.Redis,) -> bool:
     """
@@ -61,26 +76,32 @@ async def run_action(report_id: uuid.UUID, db: AsyncSession, redis: aioredis.Red
         await db.commit()
         return False
     resolved_address: str | None = report.provided_address
+    provided_coords = _parse_coordinates(resolved_address) if resolved_address else None
     tool_results: dict[str, object] = {}
+
+    # ── Automatic Geocoding ────────────────────────────────────────────────
+    # We resolve coordinates to addresses automatically before calling the AI
+    lat, lon = None, None
+    if provided_coords:
+        lat, lon = provided_coords
+        logger.info("geocoding_provided_coordinates", report_id=str(report_id), coords=provided_coords)
+    elif not resolved_address and perception.gps_latitude is not None and perception.gps_longitude is not None:
+        lat, lon = perception.gps_latitude, perception.gps_longitude
+        logger.info("geocoding_perception_gps", report_id=str(report_id), lat=lat, lon=lon)
+
+    if lat is not None and lon is not None:
+        try:
+            result = await reverse_geocode(latitude=lat, longitude=lon)
+            resolved_address = result.get("address")
+            tool_results["reverse_geocode"] = result
+            logger.info("automatic_geocode_complete", report_id=str(report_id), address=resolved_address)
+        except Exception as exc:
+            logger.error("automatic_geocode_failed", report_id=str(report_id), error=str(exc))
 
     for call in tool_calls:
         name = call["name"]
         try:
-            if name == "reverse_geocode":
-                if resolved_address:
-                    logger.info("geocode_skipped_address_provided", report_id=str(report_id))
-                    continue
-                if perception.gps_latitude is None:
-                    logger.info("geocode_skipped_no_gps", report_id=str(report_id))
-                    continue
-                result = await reverse_geocode(
-                    latitude=perception.gps_latitude,
-                    longitude=perception.gps_longitude,
-                )
-                resolved_address = result.get("address")
-                tool_results["reverse_geocode"] = result
-            
-            elif name == "send_civic_report":
+            if name == "send_civic_report":
                 result = await send_civic_report(
                     plan=plan,
                     perception=perception,
@@ -110,20 +131,20 @@ async def run_action(report_id: uuid.UUID, db: AsyncSession, redis: aioredis.Red
             await db.commit()
             return False
     report.action_result = {
-        "tools_executed": [c["name"] for c in tool_calls],
+        "tools_executed": list(tool_results.keys()),
         "resolved_address": resolved_address,
         **tool_results,
     }
     await _transition(
         db, report, ReportStatus.ACTIONED,
-        f"All tools executed successfully: {[c['name'] for c in tool_calls]}"
+        f"All tools executed successfully: {list(tool_results.keys())}"
     )
     await db.commit()
 
     logger.info(
         "action_complete",
         report_id=str(report_id),
-        tools=[c["name"] for c in tool_calls],
+        tools=list(tool_results.keys()),
         address=resolved_address,
     )
     return True

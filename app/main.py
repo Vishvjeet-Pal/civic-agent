@@ -10,6 +10,9 @@ from app.core.logging import get_logger, setup_logging
 from app.core.redis import close_redis_pool, get_redis_pool
 from app.db.session import engine
 from app.routers import health, reports, admin
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, HTMLResponse
+import os
 
 logger=get_logger(__name__)
 
@@ -57,6 +60,14 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(reports.router, prefix="/api/v1")
     app.include_router(admin.router, prefix="/api/v1")
+
+    # Serve static files and root HTML
+    static_path = os.path.join(os.path.dirname(__file__), "static")
+    app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+    @app.get("/", response_class=HTMLResponse)
+    async def read_root():
+        return FileResponse(os.path.join(static_path, "civic_guardian.html"))
 
     return app
 

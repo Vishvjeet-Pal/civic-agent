@@ -44,16 +44,16 @@ Schema:
   "issue_type": "string (MUST BE ONE OF: {categories})",
   "statute_ref": "string or null",
   "severity": "low | medium | high | critical | null",
-  "recommended_tools": ["send_civic_report" | "log_to_official_ledger" | "reverse_geocode"],
+  "recommended_tools": ["reverse_geocode", "send_civic_report", "log_to_official_ledger"],
   "context_summary": "string",
   "requires_human_review": boolean
 }}
 
 Severity mapping from detected issue scores:
     1-2 → low, 3 → medium, 4 → high, 5 → critical. Set to null if no clear issues.
-Always include all three recommended_tools unless there is no GPS data
-(omit reverse_geocode if GPS coordinates are null).
-If no action is needed, recommended_tools can be an empty list [].
+Always include ALL THREE recommended_tools in every response: "reverse_geocode", "send_civic_report", and "log_to_official_ledger".
+Do not omit "reverse_geocode" even if GPS or address data is present or missing.
+If no action is needed (e.g. no issues detected), recommended_tools can be an empty list [].
 Always set requires_human_review to false.
 """
 # Set requires_human_review to true if the statute is ambiguous or no law clearly applies.
@@ -68,14 +68,20 @@ def _build_user_prompt(perception: PerceptionResult, context_chunks: list[str]) 
     context_text = "\n\n---\n\n".join(context_chunks) if context_chunks else "No municipal code context available."
 
     gps_text = (
-        f"GPS: {perception.gps_latitude}, {perception.gps_longitude}"
-        if perception.gps_latitude is not None else "GPS: not available"
+        f"GPS (from Image): {perception.gps_latitude}, {perception.gps_longitude}"
+        if perception.gps_latitude is not None else "GPS (from Image): not available"
+    )
+    
+    provided_text = (
+        f"Provided Location: {perception.provided_address}"
+        if perception.provided_address else "Provided Location: not available"
     )
 
     return f"""REPORT ID: {perception.report_id}
     SCENE SUMMARY: {perception.summary}
     CONFIDENCE SCORE: {perception.confidence_score: .2f}
     {gps_text}
+    {provided_text}
 
     DETECTED ISSUES:
     {issues_text}
@@ -157,12 +163,23 @@ async def build_action_plan(perception: PerceptionResult, context_chunks: list[s
         try:
             raw = await _call_gemini_genai(user_prompt, strict_system)
             plan = _parse_action_plan(raw)
+            
+            # FORCE: Always include all three tools if an issue is detected.
+            # This ensures reverse_geocode is always called as requested by the user.
+            if plan.issue_type.lower() != "none":
+                plan.recommended_tools = [
+                    RecommendedTool.GEOCODE,
+                    RecommendedTool.SEND_REPORT,
+                    RecommendedTool.LOG_LEDGER
+                ]
+
             logger.info(
                 "gemini_action_plan_built",
                 report_id=str(perception.report_id),
                 issue_type=plan.issue_type,
                 severity=plan.severity,
                 statute=plan.statute_ref,
+                tools=plan.recommended_tools,
                 attempt=attempt
             )
             return plan 

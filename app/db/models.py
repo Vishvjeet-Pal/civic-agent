@@ -46,7 +46,10 @@ class Report(Base):
 
     # Audit trail
     lifecycle_events: Mapped[list["LifecycleEvent"]] = relationship(
-        back_populates="report", order_by="LifecycleEvent.created_at"
+        back_populates="report",
+        order_by="LifecycleEvent.created_at",
+        cascade="all, delete-orphan",
+        passive_deletes=True
     )
 
     __table_args__ = (

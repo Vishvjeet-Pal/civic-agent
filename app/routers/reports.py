@@ -1,5 +1,6 @@
 import uuid
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import redis.asyncio as aioredis
 from app.core.config import get_settings
@@ -7,8 +8,8 @@ from app.core.logging import get_logger
 from app.core.redis import get_redis
 from app.db.session import get_db
 from app.db.models import DeadLetterQueue, LifecycleEvent, Report, ReportStatus
-from app.schemas.report import IncomingReport, ReportResponse
-from app.services.image_store import save_image
+from app.schemas.report import IncomingReport, ReportResponse, ReportDetail
+from app.services.image_store import save_image, delete_image
 
 logger=get_logger(__name__)
 router=APIRouter(prefix="/reports", tags=["reports"])
@@ -114,4 +115,39 @@ async def get_report_status(
         status=report.status.value,
         message=f"Report is currently {report.status.value.lower()}.",
         created_at=report.created_at,
-    ) 
+    )
+
+@router.get("/", response_model=list[ReportDetail])
+async def list_reports(
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0)
+    ):
+    """List all reports with pagination."""
+    query = select(Report).order_by(Report.created_at.desc()).limit(limit).offset(offset)
+    result = await db.execute(query)
+    reports = result.scalars().all()
+    return reports
+
+@router.delete("/{report_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_report(
+    report_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+    ):
+    """Delete a report and its associated data."""
+    report = await db.get(Report, report_id)
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report not found."
+        )
+    
+    # Delete from DB
+    await db.delete(report)
+    await db.commit()
+    
+    # Delete image from disk (best effort)
+    delete_image(report_id)
+    
+    logger.info("report_deleted", report_id=str(report_id))
+    return None

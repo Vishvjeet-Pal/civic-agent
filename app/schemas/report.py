@@ -34,6 +34,7 @@ class PerceptionResult(BaseModel):
     gps_latitude: float | None = None
     gps_longitude: float | None = None
     captured_at: datetime | None = None
+    provided_address: str | None = None
     low_confidence: bool = False
     issue_count: int = 0
     issue_label: str = "none"
