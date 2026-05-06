@@ -29,7 +29,7 @@ async def test_qwen_client_retries_on_failure():
 def test_qwen_response_validation():
     valid = QwenResponse(
         summary="Road damage detected",
-        overall_confidence=0.91,
+        confidence_score=0.91,
         issues=[
             Issue(
                 type="pothole",
@@ -39,13 +39,13 @@ def test_qwen_response_validation():
             )
         ]
     )
-    assert valid.overall_confidence == 0.91
+    assert valid.confidence_score == 0.91
     assert len(valid.issues)==1
 
 def test_low_confidence_response():
     result = QwenResponse(
         summary="Possible graffiti detected",
-        overall_confidence=0.60,
+        confidence_score=0.60,
         issues=[
             Issue(
                 type="graffiti",
@@ -56,4 +56,4 @@ def test_low_confidence_response():
         ]
     )
 
-    assert result.overall_confidence < 0.75
+    assert result.confidence_score < 0.75

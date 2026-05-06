@@ -79,7 +79,7 @@ def _build_email_body(plan: ActionPlan, perception: PerceptionResult, address: s
           <td style="padding:6px;color:#666">Location</td>
           <td style="padding:6px">{location}</td></tr>
       <tr><td style="padding:6px;color:#666">Severity</td>
-          <td style="padding:6px"><strong>{plan.severity.upper()}</strong></td></tr>
+          <td style="padding:6px"><strong>{(plan.severity or "N/A").upper()}</strong></td></tr>
       <tr style="background:#f8f8f8">
           <td style="padding:6px;color:#666">Statute</td>
           <td style="padding:6px">{plan.statute_ref or "N/A"}</td></tr>
@@ -100,7 +100,8 @@ async def send_civic_report(plan: ActionPlan, perception: PerceptionResult, addr
     settings = get_settings()
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"[CivicAgent] {plan.severity.upper()} - {plan.issue_type.title()} at {address or 'Unknown Location'}"
+    severity_str = plan.severity.upper() if plan.severity else "UNKNOWN"
+    msg["Subject"] = f"[CivicAgent] {severity_str} - {plan.issue_type.title()} at {address or 'Unknown Location'}"
     msg["From"] = settings.smtp_user
     msg["To"] = settings.municipal_email
     msg["X-Report_ID"] = str(plan.report_id)

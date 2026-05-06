@@ -74,3 +74,43 @@ async def approve_review(report_id: str, db: AsyncSession=Depends(get_db)):
     await redis_client.rpush(settings.knowledge_queue_key, str(report.id))
     await redis_client.aclose()
     return {"status":"approved", "report_id":report_id}
+
+@router.get("/reports/{report_id}/full")
+async def get_full_report(report_id: str, db: AsyncSession = Depends(get_db)):
+    """Return the complete report with all pipeline outputs."""
+    import uuid as _uuid
+    from sqlalchemy import select
+    from app.db.models import LifecycleEvent 
+
+    report = await db.get(Report, _uuid.UUID(report_id))
+    if not report:
+        from fastapi import HTTPException 
+        raise HTTPException(status_code=404, detail="Not found")
+
+    events_result = await db.execute(
+        select(LifecycleEvent)
+        .where(LifecycleEvent.report_id == report.id)
+        .order_by(LifecycleEvent.created_at)
+    )
+    events = events_result.scalars().all()
+
+    return {
+        "id": str(report.id),
+        "status": report.status.value,
+        "filename": report.original_filename,
+        "gps": {"lat": report.gps_latitude, "lon": report.gps_longitude},
+        "captured_at": report.captured_at.isoformat() if report.captured_at else None,
+        "confidence_score": report.confidence_score,
+        "perception_result": report.perception_result,
+        "action_plan": report.action_plan,
+        "action_result": report.action_result,
+        "lifecycle": [
+            {
+                "from": e.from_status.value if e.from_status else None,
+                "to": e.to_status.value,
+                "detail": e.detail,
+                "at": e.created_at.isoformat(),
+            }
+            for e in events 
+        ]
+    }

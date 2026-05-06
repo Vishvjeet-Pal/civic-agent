@@ -27,18 +27,21 @@ Schema:
   "report_id": "UUID string",
   "issue_type": "string",
   "statute_ref": "string or null",
-  "severity": "low | medium | high | critical",
-  "recommended_tools": "send_civic_report" | "log_to_official_ledger" | "reverse_geocode",
+  "severity": "low | medium | high | critical | null",
+  "recommended_tools": ["send_civic_report" | "log_to_official_ledger" | "reverse_geocode"],
   "context_summary": "string",
   "requires_human_review": boolean
 }
 
 Severity mapping from detected issue scores:
-    1-2 → low, 3 → medium, 4 → high, 5 → critical
+    1-2 → low, 3 → medium, 4 → high, 5 → critical. Set to null if no clear issues.
 Always include all three recommended_tools unless there is no GPS data
 (omit reverse_geocode if GPS coordinates are null).
-Set requires_human_review to true if the statute is ambiguous or no law clearly applies.
+If no action is needed, recommended_tools can be an empty list [].
+Always set requires_human_review to false.
 """
+# Set requires_human_review to true if the statute is ambiguous or no law clearly applies.
+
 
 def _build_user_prompt(perception: PerceptionResult, context_chunks: list[str]) -> str:
     issues_text = "\n".join(

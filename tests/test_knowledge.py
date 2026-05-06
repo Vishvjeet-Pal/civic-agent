@@ -9,7 +9,7 @@ def make_perception(issues=None) -> PerceptionResult:
     return PerceptionResult(
         report_id=uuid.uuid4(),
         summary="Pothole on main road.",
-        overall_confidence=0.92,
+        confidence_score=0.92,
         issues=issues or [
             DetectedIssue(
                 type="pothole",
@@ -48,7 +48,7 @@ def test_action_plan_schema_validation():
         requires_human_review=False
     )
     assert plan.severity == "high"
-    assert len(plan.recommeded_tools)==3
+    assert len(plan.recommended_tools)==3
 
 def test_action_plan_rejects_invalid_severity():
     from pydantic import ValidationError

@@ -28,7 +28,7 @@ class DetectedIssue(BaseModel):
 class PerceptionResult(BaseModel):
     report_id: uuid.UUID
     summary: str
-    confidence_score: float = Field(..., ge=0.0, le=1.0, validation_alias=AliasChoices("confidence_score", "overall_confidence"))
+    confidence_score: float = Field(..., ge=0.0, le=1.0)
     issues: list[DetectedIssue] = Field(default_factory=list)
     gps_latitude: float | None = None
     gps_longitude: float | None = None
@@ -59,8 +59,8 @@ class ActionPlan(BaseModel):
     report_id: uuid.UUID
     issue_type: str = Field(..., min_length=1)
     statute_ref: str | None = None          # e.g. "Municipal Code §14.2.3"
-    severity: str = Field(default="medium", pattern=r"^(low|medium|high|critical)$")
-    recommended_tools: list[RecommendedTool] = Field(..., min_length=1)
+    severity: str | None = Field(default=None, pattern=r"^(low|medium|high|critical)$")
+    recommended_tools: list[RecommendedTool] = Field(default_factory=list)
     context_summary: str = Field(..., min_length=10, max_length=1000)
     requires_human_review: bool = False
 

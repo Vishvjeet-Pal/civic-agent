@@ -53,6 +53,20 @@ services:
       - chroma_data:/app/chroma_db
       - ./municipal_docs:/app/municipal_docs:ro
 
+  action_worker:
+    build: .
+    command: ["python", "-m", "app.workers.action_worker"]
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis: 
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   postgres:
     image: postgres:16-alpine
     networks:

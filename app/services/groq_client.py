@@ -37,7 +37,7 @@ def _build_user_message(plan: ActionPlan, perception: PerceptionResult) -> str:
 PERCEPTION SUMMARY:
 - Scene: {perception.summary}
 - Issues: {len(perception.issues)} detected
-- Confidence: {perception.overall_confidence:.2f}
+- Confidence: {perception.confidence_score:.2f}
 - Location: {gps}
 
 Execute the recommended_tools in order now."""
