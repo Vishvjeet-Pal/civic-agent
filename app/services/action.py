@@ -102,12 +102,65 @@ async def run_action(report_id: uuid.UUID, db: AsyncSession, redis: aioredis.Red
         name = call["name"]
         try:
             if name == "send_civic_report":
-                result = await send_civic_report(
-                    plan=plan,
-                    perception=perception,
-                    address=resolved_address
-                )
-                tool_results["send_civic_report"]  = result
+                # Handle multiple drafts (one per department)
+                results = (report.action_result or {}).get("send_civic_report", [])
+                if not isinstance(results, list):
+                    results = [results] if results else []
+
+                # Case 1: No drafts yet? Generate them and wait for approval.
+                if not results:
+                    logger.info("send_civic_report_generating_drafts", report_id=str(report_id))
+                    from app.services.mcp_tools import compose_civic_report
+                    drafts = await compose_civic_report(
+                        plan=plan,
+                        perception=perception,
+                        address=resolved_address
+                    )
+                    
+                    report.action_result = {
+                         **(report.action_result or {}),
+                         "send_civic_report": drafts
+                    }
+                    await _transition(
+                        db, report, ReportStatus.PENDING_REVIEW, 
+                        f"{len(drafts)} email drafts generated - awaiting user approval"
+                    )
+                    await db.commit()
+                    return True # Pause for approval
+
+                # Case 2: Drafts exist? Send all that haven't been sent.
+                any_new_sent = False
+                updated_results = []
+                for res in results:
+                    if not res.get("sent") and res.get("body"):
+                        logger.info(
+                            "send_civic_report_sending_draft", 
+                            report_id=str(report_id), 
+                            to=res.get("to"),
+                            body_len=len(res.get("body")),
+                            first_chars=res.get("body")[:50].replace("\n", " ")
+                        )
+                        send_res = await send_civic_report(
+                            plan=plan,
+                            perception=perception,
+                            address=resolved_address,
+                            draft=res
+                        )
+                        updated_results.append({**res, **send_res, "sent": True})
+                        any_new_sent = True
+                    else:
+                        updated_results.append(res)
+                
+                if any_new_sent:
+                    report.action_result = {
+                        **(report.action_result or {}),
+                        "send_civic_report": updated_results
+                    }
+                    tool_results["send_civic_report"] = updated_results
+                else:
+                    # Already sent or skipped
+                    tool_results["send_civic_report"] = results
+                    continue
 
             elif name == "log_to_official_ledger":
                 result = await log_to_official_ledger(

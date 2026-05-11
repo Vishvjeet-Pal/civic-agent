@@ -58,8 +58,7 @@ async def get_tool_calls(plan: ActionPlan, perception: PerceptionResult) -> list
     collected_calls: list[dict[str, Any]] = []
 
     async with httpx.AsyncClient(timeout=settings.groq_timeout_seconds) as client:
-        # Agentic loop: Llama calls one tool at a time until done
-        for _ in range(10):  # hard cap — prevents infinite loops
+        try:
             response = await client.post(
                 f"{_GROQ_BASE}/chat/completions",
                 headers={
@@ -76,32 +75,26 @@ async def get_tool_calls(plan: ActionPlan, perception: PerceptionResult) -> list
                 },
             )
             response.raise_for_status()
-            data = response.json()
+        except httpx.HTTPStatusError as exc:
+            logger.error(
+                "groq_api_error",
+                status_code=exc.response.status_code,
+                response=exc.response.text,
+                model=settings.groq_model,
+                tools_count=len(active_schemas)
+            )
+            raise
+        
+        data = response.json()
+        choice = data["choices"][0]
+        message = choice["message"]
 
-            choice = data["choices"][0]
-            message = choice["message"]
-            finish_reason = choice["finish_reason"]
-
-            # Append assistant turn to history
-            messages.append(message)
-
-            if finish_reason == "tool_calls":
-                for tc in message.get("tool_calls", []):
-                    name = tc["function"]["name"]
-                    args = json.loads(tc["function"]["arguments"])
-                    collected_calls.append({"name": name, "arguments": args, "id": tc["id"]})
-                    logger.info("llama_tool_call", tool=name, args=args)
-
-                    # Append a stub tool result so the model can continue
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc["id"],
-                        "content": json.dumps({"status": "executing"}),
-                    })
-
-            elif finish_reason == "stop":
-                # Model is done calling tools
-                break
+        if "tool_calls" in message:
+            for tc in message["tool_calls"]:
+                name = tc["function"]["name"]
+                args = json.loads(tc["function"]["arguments"])
+                collected_calls.append({"name": name, "arguments": args})
+                logger.info("llama_tool_call", tool=name, args=args)
 
     logger.info(
         "llama_tool_selection_complete",

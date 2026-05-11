@@ -45,8 +45,25 @@ async def get_dead_letter_queue(
         for e in entries
     ]}
 
+from pydantic import BaseModel
+
+class DraftUpdate(BaseModel):
+    to: str
+    subject: str
+    body: str
+    sent: bool = False
+
+class ApprovalRequest(BaseModel):
+    drafts: list[DraftUpdate] | None = None
+    provided_address: str | None = None
+    severity: str | None = None
+
 @router.patch("/review-queue/{report_id}/approve")
-async def approve_review(report_id: str, db: AsyncSession=Depends(get_db)):
+async def approve_review(
+    report_id: str, 
+    req: ApprovalRequest = None,
+    db: AsyncSession=Depends(get_db)
+):
     import uuid
     from app.db.models import LifecycleEvent
     from app.core.redis import get_redis_pool
@@ -58,6 +75,28 @@ async def approve_review(report_id: str, db: AsyncSession=Depends(get_db)):
     if not report: 
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Report not found")
+
+    # If updated drafts are provided, save them to action_result
+    if req:
+        if req.drafts:
+            from sqlalchemy.orm.attributes import flag_modified
+            current_action = dict(report.action_result or {})
+            current_action["send_civic_report"] = [d.model_dump() for d in req.drafts]
+            report.action_result = current_action
+            flag_modified(report, "action_result")
+        
+        if req.provided_address:
+            report.provided_address = req.provided_address
+            
+        if req.severity and report.action_plan:
+            current_plan = dict(report.action_plan)
+            current_plan["severity"] = req.severity
+            report.action_plan = current_plan
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(report, "action_plan")
+
+        db.add(report)
+        await db.flush()
 
     from_status=report.status
 

@@ -136,10 +136,12 @@ def _get_department_email(issue_type: str) -> str:
         logger.error("mails_json_parse_failed", error=str(exc))
         return default_email
 
-def _build_email_body(plan: ActionPlan, perception: PerceptionResult, address: str | None) -> str:
+def _build_email_body(plan: ActionPlan, perception: PerceptionResult, address: str | None, filter_types: list[str] | None = None) -> str:
+    relevant_issues = [i for i in perception.issues if not filter_types or i.type in filter_types]
+    
     issues_html = "".join(
         f"<li><strong>{i.type}</strong> (severity {i.severity}/5): {i.description}</li>"
-        for i in perception.issues
+        for i in relevant_issues
     )
     location=address or (
         f"{perception.gps_latitude:.5f}, {perception.gps_longitude:.5f}"
@@ -169,23 +171,98 @@ def _build_email_body(plan: ActionPlan, perception: PerceptionResult, address: s
     </body></html>
     """
 
+
 @_with_retry(max_attempts=3)
-async def send_civic_report(plan: ActionPlan, perception: PerceptionResult, address: str | None=None,) -> dict[str, Any]:
-    """Send a formatted civic report email to the municipal department."""
+async def compose_civic_report(plan: ActionPlan, perception: PerceptionResult, address: str | None = None) -> list[dict[str, Any]]:
+    """Generate email drafts for all unique departments involved in the report."""
+    
+    # 1. Group issues by department email
+    dept_map: dict[str, list[str]] = {} # email -> list of issue_types
+    for issue in perception.issues:
+        email = _get_department_email(issue.type)
+        if email not in dept_map:
+            dept_map[email] = []
+        if issue.type not in dept_map[email]:
+            dept_map[email].append(issue.type)
+            
+    # Ensure the primary issue type from the plan is also included if it's unique
+    primary_email = _get_department_email(plan.issue_type)
+    if primary_email not in dept_map:
+        dept_map[primary_email] = [plan.issue_type]
+    elif plan.issue_type not in dept_map[primary_email]:
+        dept_map[primary_email].append(plan.issue_type)
+
+    drafts = []
+    for email, issue_types in dept_map.items():
+        severity_str = plan.severity.upper() if plan.severity else "UNKNOWN"
+        # Use the first issue type in the subject for brevity
+        subject = f"[CivicAgent] {severity_str} - {issue_types[0].title()} at {address or 'Unknown Location'}"
+        body = _build_email_body(plan, perception, address, filter_types=issue_types)
+        
+        drafts.append({
+            "subject": subject,
+            "to": email,
+            "body": body,
+            "issue_types": issue_types,
+            "sent": False
+        })
+    
+    return drafts
+
+def _patch_body(body: str, address: str | None, severity: str | None) -> str:
+    """Sync the HTML body with updated metadata if present."""
+    import re
+    if address:
+        # Replace Location cell content
+        body = re.sub(
+            r'(<td[^>]*>Location</td>\s*<td[^>]*>).*?(</td>)', 
+            fr'\1{address}\2', 
+            body, 
+            flags=re.DOTALL | re.IGNORECASE
+        )
+    if severity:
+        # Replace Severity cell content (within <strong>)
+        body = re.sub(
+            r'(<td[^>]*>Severity</td>\s*<td[^>]*><strong>).*?(</strong></td>)', 
+            fr'\1{severity.upper()}\2', 
+            body, 
+            flags=re.DOTALL | re.IGNORECASE
+        )
+    return body
+
+@_with_retry(max_attempts=3)
+async def send_civic_report(
+    plan: ActionPlan, 
+    perception: PerceptionResult, 
+    address: str | None = None,
+    draft: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Send a formatted civic report email."""
 
     settings = get_settings()
+    
+    # If a specific draft is provided, use it
+    if draft:
+        subject = draft["subject"]
+        to_email = draft["to"]
+        body = draft["body"]
+    else:
+        # Fallback to single compose (though usually handled by multiple drafts now)
+        composed_list = await compose_civic_report(plan, perception, address)
+        if not composed_list:
+             return {"sent": False, "error": "No drafts generated"}
+        draft = composed_list[0]
+        subject = draft["subject"]
+        to_email = draft["to"]
+        body = draft["body"]
 
     msg = MIMEMultipart("alternative")
-    severity_str = plan.severity.upper() if plan.severity else "UNKNOWN"
-    msg["Subject"] = f"[CivicAgent] {severity_str} - {plan.issue_type.title()} at {address or 'Unknown Location'}"
+    msg["Subject"] = subject
     msg["From"] = settings.smtp_user
-    
-    # Dynamic routing
-    to_email = _get_department_email(plan.issue_type)
     msg["To"] = to_email
     msg["X-Report_ID"] = str(plan.report_id)
 
-    msg.attach(MIMEText(_build_email_body(plan, perception, address), "html"))
+    msg.attach(MIMEText(body, "html"))
 
     loop = asyncio.get_running_loop()
 
