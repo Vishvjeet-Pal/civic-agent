@@ -360,8 +360,10 @@
         class="ml-auto text-xs font-semibold underline underline-offset-2 hover:text-amber-900">Change</button>
     </div>
 
-    <!-- ── Upload Section ── -->
-    <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 fade-up">
+    <!-- ── Action Area: Upload & Live Stream ── -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <!-- ── Upload Section ── -->
+      <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 fade-up">
       <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
         <i data-lucide="camera" class="w-5 h-5 text-emerald-600"></i> Report a Civic Issue
       </h2>
@@ -390,7 +392,64 @@
         <p class="text-[11px] text-slate-400">Providing an address helps our AI verify the location faster.</p>
       </div>
       <div id="preview-area" class="hidden mt-4"></div>
-    </section>
+      </section>
+  
+      <!-- ── Live Stream Section ── -->
+      <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 fade-up flex flex-col">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold flex items-center gap-2">
+            <i data-lucide="video" class="w-5 h-5 text-emerald-600"></i> Live Monitoring
+          </h2>
+          <div id="stream-indicator" class="hidden flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-600 text-[10px] font-bold uppercase animate-pulse">
+            <span class="w-1.5 h-1.5 rounded-full bg-red-600"></span> Live
+          </div>
+        </div>
+        
+        <div class="relative bg-slate-900 rounded-xl overflow-hidden aspect-video flex items-center justify-center border border-slate-200 group">
+          <video id="live-video" autoplay playsinline class="w-full h-full object-cover hidden"></video>
+          <div id="video-placeholder" class="text-center p-6">
+            <div class="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3">
+              <i data-lucide="camera-off" class="w-6 h-6 text-slate-500"></i>
+            </div>
+            <p class="text-slate-500 text-sm font-medium">Camera is inactive</p>
+          </div>
+          <canvas id="frame-canvas" class="hidden"></canvas>
+        </div>
+  
+        <div class="mt-5 space-y-4 flex-1 flex flex-col">
+          <!-- Stream Type Tabs -->
+          <div class="flex p-1 bg-slate-100 rounded-lg">
+            <button onclick="setStreamMode('camera')" id="tab-camera" class="flex-1 py-1.5 text-xs font-semibold rounded-md bg-white text-slate-700 shadow-sm transition-all">Device Camera</button>
+            <button onclick="setStreamMode('cctv')" id="tab-cctv" class="flex-1 py-1.5 text-xs font-semibold rounded-md text-slate-500 hover:text-slate-700 transition-all">CCTV RTSP</button>
+          </div>
+
+          <!-- Camera Controls -->
+          <div id="controls-camera" class="flex gap-2">
+            <button id="btn-start-stream" onclick="toggleStream()" class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-all shadow-md shadow-emerald-200 flex items-center justify-center gap-2">
+              <i data-lucide="play" class="w-4 h-4"></i> Start Camera
+            </button>
+            <button id="btn-stop-stream" onclick="toggleStream()" class="hidden flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2">
+              <i data-lucide="square" class="w-4 h-4"></i> Stop
+            </button>
+          </div>
+
+          <!-- CCTV Controls -->
+          <div id="controls-cctv" class="hidden space-y-2">
+            <input type="text" id="rtsp-url" placeholder="rtsp://username:password@ip:port/stream" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all">
+            <button onclick="toggleCctv()" id="btn-cctv-toggle" class="w-full py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm font-semibold transition-all shadow-md flex items-center justify-center gap-2">
+              <i data-lucide="link" class="w-4 h-4"></i> Connect CCTV
+            </button>
+          </div>
+          
+          <div id="stream-status" class="bg-slate-50 rounded-xl p-3 border border-slate-100 flex-1">
+            <p class="text-[10px] font-bold text-slate-400 uppercase mb-2">Monitor Status</p>
+            <div id="stream-log" class="text-xs text-slate-500 space-y-1.5 max-h-[80px] overflow-y-auto">
+              <p>Ready to monitor for potholes and civic issues.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
 
     <!-- ── Processing Section ── -->
     <section id="processing-section" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-6 fade-up">
@@ -519,6 +578,11 @@
     let currentPage = 1;
     const itemsPerPage = 5;
 
+    let streamActive = false;
+    let streamTimer = null;
+    let cctvActive = false;
+    let currentRtspUrl = '';
+
     function getCurrentLocation() {
       const btn = event.currentTarget;
       const originalHtml = btn.innerHTML;
@@ -553,6 +617,184 @@
         API_BASE = url.trim().replace(/\/$/, '');
         localStorage.setItem('civic_api_base', API_BASE);
         document.getElementById('api-url-display').textContent = API_BASE || '(Relative /)';
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // LIVE STREAM
+    // ══════════════════════════════════════════════════════════════
+    async function toggleStream() {
+      if (streamActive) { stopStream(); } else { await startStream(); }
+    }
+
+    async function startStream() {
+      const video = document.getElementById('live-video');
+      const placeholder = document.getElementById('video-placeholder');
+      const startBtn = document.getElementById('btn-start-stream');
+      const stopBtn = document.getElementById('btn-stop-stream');
+      const indicator = document.getElementById('stream-indicator');
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: 'environment' }, 
+          audio: false 
+        });
+        video.srcObject = stream;
+        video.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+        startBtn.classList.add('hidden');
+        stopBtn.classList.remove('hidden');
+        indicator.classList.remove('hidden');
+        
+        streamActive = true;
+        addStreamLog('Camera active. Monitoring started...');
+        streamTimer = setInterval(captureAndProcessFrame, 10000);
+      } catch (err) {
+        console.error('Stream error:', err);
+        showToast('Camera access denied or unavailable', 'error');
+      }
+    }
+
+    function stopStream() {
+      const video = document.getElementById('live-video');
+      const placeholder = document.getElementById('video-placeholder');
+      const startBtn = document.getElementById('btn-start-stream');
+      const stopBtn = document.getElementById('btn-stop-stream');
+      const indicator = document.getElementById('stream-indicator');
+
+      if (video.srcObject) { video.srcObject.getTracks().forEach(track => track.stop()); }
+      video.classList.add('hidden');
+      placeholder.classList.remove('hidden');
+      startBtn.classList.remove('hidden');
+      stopBtn.classList.add('hidden');
+      indicator.classList.add('hidden');
+
+      streamActive = false;
+      if (streamTimer) clearInterval(streamTimer);
+      addStreamLog('Monitoring stopped.');
+    }
+
+    async function captureAndProcessFrame() {
+      if (!streamActive) return;
+      const video = document.getElementById('live-video');
+      const canvas = document.getElementById('frame-canvas');
+      const context = canvas.getContext('2d');
+      
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const b64 = canvas.toDataURL('image/jpeg', 0.8);
+      
+      let lat = null, lon = null;
+      const addrVal = document.getElementById('address-input').value;
+      if (addrVal && addrVal.includes(',')) {
+        const parts = addrVal.split(',');
+        lat = parseFloat(parts[0]);
+        lon = parseFloat(parts[1]);
+      }
+
+      try {
+        addStreamLog('Analysing frame...');
+        const res = await fetch(`${API_BASE}/api/v1/stream/frame`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image_b64: b64, latitude: lat, longitude: lon, camera_label: 'dashboard-live'
+          })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        handleStreamResult(data);
+      } catch (err) { console.warn('Frame analysis failed:', err); }
+    }
+
+    function handleStreamResult(data) {
+      if (data.action === 'reported') {
+        addStreamLog(`<span class="text-emerald-600 font-bold">New issue: ${data.issue_type}</span>`);
+        showToast(`Auto-reported ${data.issue_type}`, 'success');
+        refreshDashboard();
+      } else if (data.action === 'duplicate') {
+        addStreamLog(`<span class="text-amber-600">Duplicate ${data.issue_type} ignored.</span>`);
+      } else if (data.action === 'no_issue') {
+        addStreamLog('No issues detected.');
+      } else if (data.action === 'low_confidence') {
+        addStreamLog('Low confidence detection.');
+      }
+    }
+
+    function addStreamLog(msg) {
+      const log = document.getElementById('stream-log');
+      const p = document.createElement('p');
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      p.innerHTML = `<span class="opacity-40">[${time}]</span> ${msg}`;
+      log.prepend(p);
+      if (log.children.length > 6) log.lastElementChild.remove();
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // CCTV LOGIC
+    // ══════════════════════════════════════════════════════════════
+    function setStreamMode(mode) {
+      const isCamera = mode === 'camera';
+      document.getElementById('controls-camera').classList.toggle('hidden', !isCamera);
+      document.getElementById('controls-cctv').classList.toggle('hidden', isCamera);
+      
+      const tabCam = document.getElementById('tab-camera');
+      const tabCctv = document.getElementById('tab-cctv');
+      
+      tabCam.className = isCamera ? 'flex-1 py-1.5 text-xs font-semibold rounded-md bg-white text-slate-700 shadow-sm transition-all' : 'flex-1 py-1.5 text-xs font-semibold rounded-md text-slate-500 hover:text-slate-700 transition-all';
+      tabCctv.className = !isCamera ? 'flex-1 py-1.5 text-xs font-semibold rounded-md bg-white text-slate-700 shadow-sm transition-all' : 'flex-1 py-1.5 text-xs font-semibold rounded-md text-slate-500 hover:text-slate-700 transition-all';
+    }
+
+    async function toggleCctv() {
+      const urlInput = document.getElementById('rtsp-url');
+      const btn = document.getElementById('btn-cctv-toggle');
+      
+      if (cctvActive) {
+        // STOP
+        try {
+          const res = await fetch(`${API_BASE}/api/v1/stream/cctv/stop?rtsp_url=${encodeURIComponent(currentRtspUrl)}`, { method: 'POST' });
+          if (res.ok) {
+            cctvActive = false;
+            btn.innerHTML = '<i data-lucide="link" class="w-4 h-4"></i> Connect CCTV';
+            btn.className = 'w-full py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm font-semibold transition-all shadow-md flex items-center justify-center gap-2';
+            urlInput.disabled = false;
+            addStreamLog('CCTV disconnected.');
+            lucide.createIcons();
+          }
+        } catch (e) { showToast('Failed to stop CCTV', 'error'); }
+      } else {
+        // START
+        const url = urlInput.value.trim();
+        if (!url) { showToast('Please enter RTSP URL', 'warning'); return; }
+        
+        // Get current location if available
+        let lat = null, lon = null;
+        const addrVal = document.getElementById('address-input').value;
+        if (addrVal && addrVal.includes(',')) {
+          const parts = addrVal.split(',');
+          lat = parseFloat(parts[0]);
+          lon = parseFloat(parts[1]);
+        }
+
+        try {
+          const res = await fetch(`${API_BASE}/api/v1/stream/cctv/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rtsp_url: url, latitude: lat, longitude: lon, label: 'remote-cctv' })
+          });
+          if (res.ok) {
+            cctvActive = true;
+            currentRtspUrl = url;
+            btn.innerHTML = '<i data-lucide="link-2-off" class="w-4 h-4"></i> Disconnect CCTV';
+            btn.className = 'w-full py-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2';
+            urlInput.disabled = true;
+            addStreamLog(`<span class="text-emerald-600 font-bold">CCTV Linked:</span> AI is pulling frames from background.`);
+            lucide.createIcons();
+          } else {
+            showToast('Failed to start CCTV stream', 'error');
+          }
+        } catch (e) { showToast('Network error starting CCTV', 'error'); }
       }
     }
 

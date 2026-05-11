@@ -9,7 +9,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
 from app.core.redis import close_redis_pool, get_redis_pool
 from app.db.session import engine
-from app.routers import health, reports, admin
+from app.routers import health, reports, admin, stream
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 import os
@@ -60,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(reports.router, prefix="/api/v1")
     app.include_router(admin.router, prefix="/api/v1")
+    app.include_router(stream.router, prefix="/api/v1")
 
     # Serve static files and root HTML
     static_path = os.path.join(os.path.dirname(__file__), "static")
