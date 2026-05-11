@@ -57,6 +57,7 @@ class ApprovalRequest(BaseModel):
     drafts: list[DraftUpdate] | None = None
     provided_address: str | None = None
     severity: str | None = None
+    perception_result: dict | None = None
 
 @router.patch("/review-queue/{report_id}/approve")
 async def approve_review(
@@ -94,6 +95,11 @@ async def approve_review(
             report.action_plan = current_plan
             from sqlalchemy.orm.attributes import flag_modified
             flag_modified(report, "action_plan")
+
+        if req.perception_result:
+            report.perception_result = req.perception_result
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(report, "perception_result")
 
         db.add(report)
         await db.flush()

@@ -1690,11 +1690,23 @@
       </div>
     </div>` : ''}
 
-    ${plan.statute_ref ? `
-    <div class="p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
-      <p class="text-xs text-emerald-600 uppercase font-semibold mb-1">Statute</p>
-      <p class="text-sm font-semibold text-emerald-800 mono">${plan.statute_ref}</p>
-    </div>` : ''}
+    <div class="space-y-2 mt-4">
+      <p class="text-[10px] text-slate-400 uppercase font-bold mb-1">Detected Issues (Review)</p>
+      ${issues.map((iss, idx) => `
+        <div id="issue-card-${r.id}-${idx}" class="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between group">
+          <div class="flex-1">
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="font-bold text-xs capitalize text-slate-700">${iss.type}</span>
+              <span class="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded font-bold">SEV ${iss.severity}</span>
+            </div>
+            <p class="text-[10px] text-slate-500 leading-tight">${iss.description}</p>
+          </div>
+          <button onclick="discardItem('issue-card-${r.id}-${idx}')" class="p-1.5 text-slate-400 hover:text-red-500 transition-colors">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      `).join('')}
+    </div>
 
     ${(() => {
       const emailReports = Array.isArray(action.send_civic_report) ? action.send_civic_report : (action.send_civic_report ? [action.send_civic_report] : []);
@@ -1722,18 +1734,20 @@
           ${pending.map((d, idx) => {
             const draft = d.draft || d;
             return `
-            <div class="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-              <div class="flex items-center justify-between mb-3">
+            <div id="draft-card-${r.id}-${idx}" class="p-4 bg-slate-50 border border-slate-200 rounded-2xl relative group">
+              <button onclick="discardItem('draft-card-${r.id}-${idx}')" class="absolute top-4 right-4 p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+              <div class="flex items-center justify-between mb-3 pr-8">
                  <div class="flex items-center gap-2">
                     <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
                       <i data-lucide="mail" class="w-4 h-4 text-blue-600"></i>
                     </div>
                     <div>
-                      <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email Draft ${pending.length > 1 ? idx + 1 : ''}</p>
+                      <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email Draft</p>
                       <p class="text-xs font-semibold text-slate-700">${draft.to}</p>
                     </div>
                  </div>
-                 <span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-bold uppercase">Review</span>
               </div>
               
               <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -1855,55 +1869,84 @@
 
     // ══════════════════════════════════════════════════════════════
     // ADMIN ACTIONS
+    function discardItem(id) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.classList.add('opacity-40', 'grayscale', 'pointer-events-none');
+        el.dataset.discarded = 'true';
+        showToast('Item marked for removal', 'info');
+      }
+    }
+
     async function approveReview(reportId) {
       try {
         const r = reports.find(rep => rep.id === reportId);
-        let payload = null;
+        if (!r) throw new Error('Report not found');
+
         const addressEl = document.getElementById(`edit-address-${reportId}`);
         const severityEl = document.getElementById(`edit-severity-${reportId}`);
         
         const provided_address = addressEl ? addressEl.innerText.trim() : null;
         const severity = severityEl ? severityEl.value : null;
 
-        if (r && r.action_result?.send_civic_report) {
-          const emailReports = Array.isArray(r.action_result.send_civic_report) ? r.action_result.send_civic_report : [r.action_result.send_civic_report];
-          const drafts = [];
-          
-          emailReports.forEach((d, idx) => {
-            const subjectEl = document.getElementById(`draft-subject-${reportId}-${idx}`);
-            const bodyEl = document.getElementById(`draft-body-${reportId}-${idx}`);
-            
-            if (subjectEl && bodyEl) {
-              drafts.push({
-                to: d.to,
-                subject: subjectEl.innerText.trim(),
-                body: bodyEl.innerHTML.trim(), 
-                sent: false
-              });
-            } else {
-              drafts.push(d); 
-            }
-          });
-          payload = { drafts, provided_address, severity };
-        } else {
-          payload = { provided_address, severity };
+        // 1. Collect Issues (only those not discarded)
+        let perception_result = r.perception_result ? { ...r.perception_result } : null;
+        if (perception_result && perception_result.issues) {
+           const keptIssues = [];
+           perception_result.issues.forEach((iss, idx) => {
+             const card = document.getElementById(`issue-card-${reportId}-${idx}`);
+             if (!card || card.dataset.discarded !== 'true') {
+               keptIssues.push(iss);
+             }
+           });
+           perception_result.issues = keptIssues;
         }
+
+        // 2. Collect Drafts (only those not discarded)
+        let drafts = null;
+        const emailReports = Array.isArray(r.action_result?.send_civic_report) ? r.action_result.send_civic_report : (r.action_result?.send_civic_report ? [r.action_result.send_civic_report] : []);
+        
+        if (emailReports.length > 0) {
+           const keptDrafts = [];
+           emailReports.forEach((d, idx) => {
+             if (d.sent) {
+               keptDrafts.push(d);
+               return;
+             }
+             const card = document.getElementById(`draft-card-${reportId}-${idx}`);
+             if (!card || card.dataset.discarded !== 'true') {
+               const subjectEl = document.getElementById(`draft-subject-${reportId}-${idx}`);
+               const bodyEl = document.getElementById(`draft-body-${reportId}-${idx}`);
+               keptDrafts.push({
+                 to: d.to,
+                 subject: subjectEl ? subjectEl.innerText.trim() : d.subject,
+                 body: bodyEl ? bodyEl.innerHTML.trim() : d.body,
+                 sent: false
+               });
+             }
+           });
+           drafts = keptDrafts;
+        }
+
+        const payload = { drafts, provided_address, severity, perception_result };
 
         await apiApproveReview(reportId, payload);
         const idx = reports.findIndex(rep => rep.id === reportId);
         if (idx !== -1) {
           reports[idx].status = 'ANALYZED';
-          if (payload && payload.drafts) {
+          reports[idx].authority_status = 'PENDING';
+          if (payload.drafts) {
             if (!reports[idx].action_result) reports[idx].action_result = {};
             reports[idx].action_result.send_civic_report = payload.drafts;
           }
-          if (payload && payload.provided_address) reports[idx].provided_address = payload.provided_address;
-          if (payload && payload.severity && reports[idx].action_plan) reports[idx].action_plan.severity = payload.severity;
+          if (payload.perception_result) reports[idx].perception_result = payload.perception_result;
+          if (payload.provided_address) reports[idx].provided_address = payload.provided_address;
         }
+        
         renderDashboard();
         updateHeaderStats();
         closeDrawer();
-        showToast(payload ? 'Email approved — sending now!' : 'Report approved — queued for action!', 'success');
+        showToast('Report approved and enqueued for action', 'success');
       } catch (e) {
         showToast('Approval failed: ' + e.message, 'error');
       }
