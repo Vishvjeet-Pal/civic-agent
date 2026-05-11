@@ -2,82 +2,71 @@
 Deduplication service: checks whether a civic issue has already been
 reported recently for the same location and issue type.
 
-Called by the live-stream capture endpoint before submitting a full report.
+Updated to support multi-user subscriptions to the same report.
 """
-import hashlib
 from datetime import datetime, timedelta, timezone
-
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.db.models import Report, ReportStatus
+from app.db.models import Report, ReportSubscriber, User
 
 logger = get_logger(__name__)
 
-# How close two GPS points must be (in decimal degrees) to be "same location"
-# ~0.0005° ≈ 55 metres
-LOCATION_TOLERANCE = 0.0005
-
-# How many hours before the same issue+location can be re-reported
-DEDUP_WINDOW_HOURS = 24
-
-
 async def is_duplicate(
-    db: AsyncSession,
-    issue_type: str,
-    latitude: float | None,
-    longitude: float | None,
+    db: AsyncSession, 
+    issue_type: str, 
+    lat: float | None, 
+    lon: float | None,
+    user: User | None = None
 ) -> tuple[bool, str | None]:
     """
-    Returns (is_duplicate, existing_report_id).
-    Considers a report a duplicate if:
-      - Same issue_type (from action_plan->issue_type)
-      - GPS within LOCATION_TOLERANCE degrees
-      - Created within DEDUP_WINDOW_HOURS
-      - Status not FAILED (i.e. it was actually processed)
-    If no GPS available, deduplication is skipped (returns False).
+    Checks if a similar issue exists within 100 meters and was created in the last 24 hours.
+    If a user is provided and it's a duplicate, it adds them as a subscriber.
     """
-    if latitude is None or longitude is None:
+    if lat is None or lon is None:
         return False, None
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=DEDUP_WINDOW_HOURS)
+    settings = get_settings()
+    threshold_time = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    # Simple bounding box check (~100m)
+    lat_delta = 0.001
+    lon_delta = 0.001
 
     stmt = select(Report).where(
         and_(
-            Report.created_at >= cutoff,
-            Report.status.in_([
-                ReportStatus.RECEIVED,
-                ReportStatus.PROCESSING,
-                ReportStatus.ANALYZED,
-                ReportStatus.ACTIONED,
-                ReportStatus.PENDING_REVIEW,
-            ]),
-            Report.gps_latitude.between(
-                latitude - LOCATION_TOLERANCE,
-                latitude + LOCATION_TOLERANCE,
-            ),
-            Report.gps_longitude.between(
-                longitude - LOCATION_TOLERANCE,
-                longitude + LOCATION_TOLERANCE,
-            ),
+            Report.gps_latitude.between(lat - lat_delta, lat + lat_delta),
+            Report.gps_longitude.between(lon - lon_delta, lon + lon_delta),
+            Report.created_at >= threshold_time
         )
     )
+    
     result = await db.execute(stmt)
-    candidates = result.scalars().all()
+    reports = result.scalars().all()
 
-    for report in candidates:
-        plan = report.action_plan or {}
-        existing_type = plan.get("issue_type", "").lower()
-        if existing_type and (issue_type.lower() in existing_type or existing_type in issue_type.lower()):
-            logger.info(
-                "dedup_hit",
-                existing_report=str(report.id),
-                issue_type=issue_type,
-                lat=latitude,
-                lon=longitude,
-            )
-            return True, str(report.id)
+    for report in reports:
+        # Check if the perception result contains the same issue type
+        # perception_result is a JSONB field
+        p_res = report.perception_result
+        if p_res and "issues" in p_res:
+            existing_types = [i["type"] for i in p_res["issues"]]
+            if issue_type in existing_types:
+                # If a user is logged in, link them to this report
+                if user:
+                    # Check if already subscribed
+                    sub_check = await db.execute(
+                        select(ReportSubscriber).where(
+                            and_(
+                                ReportSubscriber.report_id == report.id,
+                                ReportSubscriber.user_id == user.id
+                            )
+                        )
+                    )
+                    if not sub_check.scalar_one_or_none():
+                        db.add(ReportSubscriber(report_id=report.id, user_id=user.id))
+                        # Note: We don't commit here, the caller handles it
+                
+                return True, str(report.id)
 
     return False, None

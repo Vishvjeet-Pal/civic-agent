@@ -71,6 +71,7 @@ class ReportResponse(BaseModel):
     status: str
     message: str
     created_at: datetime
+    authority_status: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -89,5 +90,6 @@ class ReportDetail(BaseModel):
     action_result: dict[str, Any] | None
     created_at: datetime
     updated_at: datetime
+    authority_status: str | None = None
 
     model_config = {"from_attributes": True}

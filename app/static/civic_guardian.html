@@ -311,44 +311,112 @@
 
 <body class="bg-slate-50 text-slate-800 min-h-screen">
 
-  <!-- ══════════════════════════════════════════════
-     HEADER
-══════════════════════════════════════════════ -->
-  <header class="header-bg text-white px-6 py-5 shadow-xl sticky top-0 z-40">
-    <div class="max-w-5xl mx-auto flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center ring-2 ring-white/30 live-dot">
-          <i data-lucide="shield-check" class="w-5 h-5"></i>
+  <!-- ══════════════════════════════════════════════════════════════
+       AUTH OVERLAY
+       ══════════════════════════════════════════════════════════════ -->
+  <div id="auth-overlay" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-300">
+      <div class="p-8">
+        <div class="flex justify-center mb-6">
+          <div class="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center">
+            <i data-lucide="shield-check" class="w-10 h-10 text-slate-800"></i>
+          </div>
         </div>
-        <div>
-          <h1 class="text-xl font-bold tracking-tight">Civic Agent</h1>
-          <p class="text-emerald-200 text-xs font-medium tracking-wide uppercase">Report · Resolve · Restore</p>
-        </div>
-      </div>
-      <!-- Stats strip -->
-      <div class="hidden sm:flex items-center gap-5 text-sm">
-        <div class="text-center">
-          <div id="hdr-total" class="font-bold text-white text-lg leading-none">0</div>
-          <div class="text-emerald-300 text-xs mt-0.5">Total</div>
-        </div>
-        <div class="w-px h-8 bg-white/20"></div>
-        <div class="text-center">
-          <div id="hdr-pending" class="font-bold text-amber-300 text-lg leading-none">0</div>
-          <div class="text-emerald-300 text-xs mt-0.5">Pending</div>
-        </div>
-        <div class="w-px h-8 bg-white/20"></div>
-        <div class="text-center">
-          <div id="hdr-actioned" class="font-bold text-blue-300 text-lg leading-none">0</div>
-          <div class="text-emerald-300 text-xs mt-0.5">Actioned</div>
+        
+        <h2 id="auth-title" class="text-2xl font-bold text-center text-slate-900 mb-2">Welcome Back</h2>
+        <p id="auth-subtitle" class="text-slate-500 text-center text-sm mb-8">Sign in to access Civic Guardian</p>
+
+        <form id="auth-form" class="space-y-4">
+          <div id="register-fields" class="hidden space-y-4 mb-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 ml-1">Full Name</label>
+              <input type="text" id="auth-name" class="w-full px-4 py-3 bg-slate-50 border-0 rounded-xl text-sm focus:ring-2 focus:ring-slate-200 transition-all" placeholder="John Doe">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 ml-1">Role</label>
+              <select id="auth-role" class="w-full px-4 py-3 bg-slate-50 border-0 rounded-xl text-sm focus:ring-2 focus:ring-slate-200 transition-all">
+                <option value="CITIZEN">Citizen</option>
+                <option value="AUTHORITY">Authority</option>
+              </select>
+            </div>
+          </div>
+          
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 ml-1">Email Address</label>
+            <input type="email" id="auth-email" required class="w-full px-4 py-3 bg-slate-50 border-0 rounded-xl text-sm focus:ring-2 focus:ring-slate-200 transition-all" placeholder="name@example.com">
+          </div>
+          
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 ml-1">Password</label>
+            <input type="password" id="auth-password" required class="w-full px-4 py-3 bg-slate-50 border-0 rounded-xl text-sm focus:ring-2 focus:ring-slate-200 transition-all" placeholder="••••••••">
+          </div>
+
+          <button type="submit" class="w-full py-4 bg-slate-900 hover:bg-black text-white rounded-2xl text-sm font-bold transition-all shadow-lg shadow-slate-200 mt-4 flex items-center justify-center gap-2">
+            <span id="auth-btn-text">Sign In</span>
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </button>
+        </form>
+
+        <div class="mt-8 text-center">
+          <button id="toggle-auth-mode" class="text-sm text-slate-500 hover:text-slate-900 transition-all font-medium">
+            Don't have an account? <span class="text-slate-900 font-bold underline">Create one</span>
+          </button>
         </div>
       </div>
     </div>
-  </header>
+  </div>
 
-  <!-- ══════════════════════════════════════════════
-     MAIN
+  <!-- ══════════════════════════════════════════════════════════════
+       MAIN DASHBOARD
+       ══════════════════════════════════════════════════════════════ -->
+  <div id="main-app" class="hidden">
+    <!-- Header -->
+    <header class="header-bg text-white px-6 py-5 shadow-xl sticky top-0 z-40">
+      <div class="max-w-7xl mx-auto flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center ring-2 ring-white/30 live-dot">
+            <i data-lucide="shield-check" class="w-5 h-5 text-white"></i>
+          </div>
+          <div>
+            <h1 class="text-xl font-bold tracking-tight">Civic Agent</h1>
+            <p id="user-badge" class="text-emerald-200 text-xs font-medium tracking-wide uppercase">Report · Resolve · Restore</p>
+          </div>
+        </div>
+
+        <!-- Stats strip -->
+        <div class="hidden sm:flex items-center gap-5 text-sm">
+          <div class="text-center">
+            <div id="hdr-total" class="font-bold text-white text-lg leading-none">0</div>
+            <div class="text-emerald-300 text-xs mt-0.5">Total</div>
+          </div>
+          <div class="w-px h-8 bg-white/20"></div>
+          <div class="text-center">
+            <div id="hdr-pending" class="font-bold text-amber-300 text-lg leading-none">0</div>
+            <div class="text-emerald-300 text-xs mt-0.5">Pending</div>
+          </div>
+          <div class="w-px h-8 bg-white/20"></div>
+          <div class="text-center">
+            <div id="hdr-resolved" class="font-bold text-blue-300 text-lg leading-none">0</div>
+            <div class="text-emerald-300 text-xs mt-0.5">Resolved</div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-4">
+          <div class="hidden md:flex flex-col items-end mr-2">
+            <span id="header-user-name" class="text-sm font-bold text-white">Loading...</span>
+            <span id="header-user-email" class="text-[10px] text-emerald-100">...</span>
+          </div>
+          <button onclick="handleLogout()" class="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-all">
+            <i data-lucide="log-out" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ══════════════════════════════════════════════
+       MAIN
 ══════════════════════════════════════════════ -->
-  <main class="max-w-5xl mx-auto px-4 py-8 space-y-8">
+    <main class="max-w-5xl mx-auto px-4 py-8 space-y-8">
 
     <!-- ── API Config Banner ── -->
     <div id="api-banner"
@@ -534,6 +602,11 @@
             title="Refresh">
             <i data-lucide="refresh-cw" class="w-4 h-4"></i>
           </button>
+          <button id="bulk-resolve-btn" onclick="openBulkResolve()"
+            class="hidden px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-black transition-all flex items-center gap-1.5 shadow-lg shadow-slate-200">
+            <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+            Bulk Resolve
+          </button>
         </div>
       </div>
       <div id="dashboard" class="space-y-3">
@@ -564,6 +637,7 @@
     <div id="drawer-content" class="flex-1 overflow-y-auto px-5 py-4 space-y-4"></div>
   </aside>
 
+  </div> <!-- End of main-app -->
   <script>
     // ══════════════════════════════════════════════════════════════
     // CONFIG
@@ -577,6 +651,120 @@
     let pollReportId = null;
     let currentPage = 1;
     const itemsPerPage = 5;
+
+    let currentUser = null;
+    let authMode = 'login'; // 'login' | 'register'
+    let authToken = localStorage.getItem('civic_token');
+
+    // ══════════════════════════════════════════════════════════════
+    // AUTH LOGIC
+    // ══════════════════════════════════════════════════════════════
+    async function authedFetch(url, options = {}) {
+      if (!authToken) {
+        showAuth();
+        throw new Error('No auth token');
+      }
+      const headers = {
+        ...options.headers,
+        'Authorization': `Bearer ${authToken}`
+      };
+      const res = await fetch(url, { ...options, headers });
+      if (res.status === 401) {
+        handleLogout();
+      }
+      return res;
+    }
+    const authOverlay = document.getElementById('auth-overlay');
+    const mainApp = document.getElementById('main-app');
+    const authForm = document.getElementById('auth-form');
+    const toggleAuthBtn = document.getElementById('toggle-auth-mode');
+
+    toggleAuthBtn.onclick = () => {
+      authMode = authMode === 'login' ? 'register' : 'login';
+      document.getElementById('register-fields').classList.toggle('hidden', authMode === 'login');
+      document.getElementById('auth-title').innerText = authMode === 'login' ? 'Welcome Back' : 'Create Account';
+      document.getElementById('auth-subtitle').innerText = authMode === 'login' ? 'Sign in to access Civic Guardian' : 'Join the community reporting system';
+      document.getElementById('auth-btn-text').innerText = authMode === 'login' ? 'Sign In' : 'Sign Up';
+      toggleAuthBtn.innerHTML = authMode === 'login' ? "Don't have an account? <span class='text-slate-900 font-bold underline'>Create one</span>" : "Already have an account? <span class='text-slate-900 font-bold underline'>Sign in</span>";
+    };
+
+    authForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('auth-email').value;
+      const password = document.getElementById('auth-password').value;
+      
+      try {
+        let res;
+        if (authMode === 'login') {
+          const formData = new FormData();
+          formData.append('username', email);
+          formData.append('password', password);
+          res = await fetch(`${API_BASE}/api/v1/auth/login`, { method: 'POST', body: formData });
+        } else {
+          const name = document.getElementById('auth-name').value;
+          const role = document.getElementById('auth-role').value;
+          res = await fetch(`${API_BASE}/api/v1/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, full_name: name, role })
+          });
+        }
+
+        const data = await res.json();
+        if (res.ok) {
+          authToken = data.access_token;
+          localStorage.setItem('civic_token', authToken);
+          await initSession();
+        } else {
+          showToast(data.detail || 'Authentication failed', 'error');
+        }
+      } catch (err) {
+        showToast('Network error during auth', 'error');
+      }
+    };
+
+    async function initSession() {
+      if (!authToken) return showAuth();
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/auth/me`, {
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (res.ok) {
+          currentUser = await res.json();
+          document.getElementById('header-user-name').innerText = currentUser.full_name;
+          document.getElementById('header-user-email').innerText = currentUser.email;
+          document.getElementById('user-badge').innerText = currentUser.role === 'AUTHORITY' ? 'Authority Portal' : 'Citizen Portal';
+          
+          hideAuth();
+          try { refreshDashboard(); } catch (_) {}
+          
+          if (currentUser.role === 'AUTHORITY') {
+            document.getElementById('bulk-resolve-btn').classList.remove('hidden');
+          }
+        } else {
+          showAuth();
+        }
+      } catch (e) { console.error('initSession error:', e); showAuth(); }
+    }
+
+    function showAuth() {
+      authOverlay.classList.remove('hidden');
+      mainApp.classList.add('hidden');
+    }
+
+    function hideAuth() {
+      authOverlay.classList.add('hidden');
+      mainApp.classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function handleLogout() {
+      localStorage.removeItem('civic_token');
+      location.reload();
+    }
+
+    // Initialize
+    initSession();
 
     let streamActive = false;
     let streamTimer = null;
@@ -695,7 +883,7 @@
 
       try {
         addStreamLog('Analysing frame...');
-        const res = await fetch(`${API_BASE}/api/v1/stream/frame`, {
+        const res = await authedFetch(`${API_BASE}/api/v1/stream/frame`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -749,11 +937,12 @@
     async function toggleCctv() {
       const urlInput = document.getElementById('rtsp-url');
       const btn = document.getElementById('btn-cctv-toggle');
+      const urlValue = urlInput.value.trim();
       
       if (cctvActive) {
         // STOP
         try {
-          const res = await fetch(`${API_BASE}/api/v1/stream/cctv/stop?rtsp_url=${encodeURIComponent(currentRtspUrl)}`, { method: 'POST' });
+          const res = await authedFetch(`${API_BASE}/api/v1/stream/cctv/stop?rtsp_url=${encodeURIComponent(currentRtspUrl)}`, { method: 'POST' });
           if (res.ok) {
             cctvActive = false;
             btn.innerHTML = '<i data-lucide="link" class="w-4 h-4"></i> Connect CCTV';
@@ -765,10 +954,8 @@
         } catch (e) { showToast('Failed to stop CCTV', 'error'); }
       } else {
         // START
-        const url = urlInput.value.trim();
-        if (!url) { showToast('Please enter RTSP URL', 'warning'); return; }
+        if (!urlValue) { showToast('Please enter RTSP URL', 'warning'); return; }
         
-        // Get current location if available
         let lat = null, lon = null;
         const addrVal = document.getElementById('address-input').value;
         if (addrVal && addrVal.includes(',')) {
@@ -778,14 +965,14 @@
         }
 
         try {
-          const res = await fetch(`${API_BASE}/api/v1/stream/cctv/start`, {
+          const res = await authedFetch(`${API_BASE}/api/v1/stream/cctv/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ rtsp_url: url, latitude: lat, longitude: lon, label: 'remote-cctv' })
+            body: JSON.stringify({ rtsp_url: urlValue, latitude: lat, longitude: lon, label: 'remote-cctv' })
           });
           if (res.ok) {
             cctvActive = true;
-            currentRtspUrl = url;
+            currentRtspUrl = urlValue;
             btn.innerHTML = '<i data-lucide="link-2-off" class="w-4 h-4"></i> Disconnect CCTV';
             btn.className = 'w-full py-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2';
             urlInput.disabled = true;
@@ -805,42 +992,40 @@
       const form = new FormData();
       form.append('file', file);
       if (address) form.append('address', address);
-      console.log(`Submitting report to: ${API_BASE}/api/v1/reports/`);
-      const res = await fetch(`${API_BASE}/api/v1/reports/`, { method: 'POST', body: form });
+      const res = await authedFetch(`${API_BASE}/api/v1/reports/`, { method: 'POST', body: form });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        console.error('Submission failed:', res.status, err);
         throw new Error(err.detail || `HTTP ${res.status}`);
       }
       return res.json();
     }
 
     async function apiGetReport(id) {
-      const res = await fetch(`${API_BASE}/api/v1/reports/${id}`);
+      const res = await authedFetch(`${API_BASE}/api/v1/reports/${id}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json();
     }
 
     async function apiListReports(limit = 50, offset = 0) {
-      const res = await fetch(`${API_BASE}/api/v1/reports/?limit=${limit}&offset=${offset}`);
+      const res = await authedFetch(`${API_BASE}/api/v1/reports/?limit=${limit}&offset=${offset}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json();
     }
 
     async function apiGetFullReport(id) {
-      const res = await fetch(`${API_BASE}/api/v1/admin/reports/${id}/full`);
+      const res = await authedFetch(`${API_BASE}/api/v1/admin/reports/${id}/full`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json();
     }
 
     async function apiGetReviewQueue() {
-      const res = await fetch(`${API_BASE}/api/v1/admin/review-queue`);
+      const res = await authedFetch(`${API_BASE}/api/v1/admin/review-queue`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json();
     }
 
     async function apiApproveReview(reportId, data = null) {
-      const res = await fetch(`/api/v1/admin/review-queue/${reportId}/approve`, {
+      const res = await authedFetch(`${API_BASE}/api/v1/admin/review-queue/${reportId}/approve`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: data ? JSON.stringify(data) : JSON.stringify({})
@@ -850,9 +1035,49 @@
     }
 
     async function apiDeleteReport(id) {
-      const res = await fetch(`${API_BASE}/api/v1/reports/${id}`, { method: 'DELETE' });
+      const res = await authedFetch(`${API_BASE}/api/v1/reports/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return true;
+    }
+
+    async function resolveReport(id) {
+      if (!confirm('Mark this report as RESOLVED and notify all subscribers?')) return;
+      try {
+        const res = await authedFetch(`${API_BASE}/api/v1/authority/resolve/${id}`, { method: 'POST' });
+        if (res.ok) {
+          showToast('Report marked as resolved. Citizens notified.', 'success');
+          refreshDashboard();
+        } else {
+          const err = await res.json();
+          showToast(err.detail || 'Failed to resolve report', 'error');
+        }
+      } catch (err) {
+        showToast('Network error while resolving', 'error');
+      }
+    }
+
+    async function openBulkResolve() {
+      const issue_type = prompt("Enter Issue Type to resolve in bulk (e.g., Garbage):");
+      if (!issue_type) return;
+      
+      const address = prompt("Enter exact Address to match (must match exactly as stored):");
+      if (!address) return;
+      
+      if (!confirm(`Are you sure you want to resolve ALL pending ${issue_type} reports at "${address}"?`)) return;
+      
+      try {
+        const res = await authedFetch(`${API_BASE}/api/v1/authority/resolve-bulk?issue_type=${encodeURIComponent(issue_type)}&address=${encodeURIComponent(address)}`, { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          showToast(`Bulk resolve complete. ${data.resolved_count} reports resolved.`, 'success');
+          refreshDashboard();
+        } else {
+          const err = await res.json();
+          showToast(err.detail || 'Bulk resolve failed', 'error');
+        }
+      } catch (err) {
+        showToast('Network error during bulk resolve', 'error');
+      }
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -1006,11 +1231,13 @@
     };
 
     function startPolling(reportId) {
+      if (!reportId) return;
       pollReportId = reportId;
       document.getElementById('poll-strip').classList.remove('hidden');
       let seconds = 0;
 
       pollInterval = setInterval(async () => {
+        if (!reportId) { stopPolling(); return; }
         seconds += 5;
         document.getElementById('poll-countdown').textContent = `${seconds}s`;
 
@@ -1141,6 +1368,12 @@
       <div class="p-3 bg-slate-50 rounded-xl">
         <p class="text-xs text-slate-400 font-semibold uppercase mb-1">Severity</p>
         <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${sevClass}">${(plan.severity || '—').toUpperCase()}</span>
+      </div>
+      <div class="p-3 bg-slate-50 rounded-xl col-span-2">
+        <p class="text-xs text-slate-400 font-semibold uppercase mb-1">Authority Status</p>
+        <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${full.authority_status === 'RESOLVED' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}">
+          ${full.authority_status || 'PENDING'}
+        </span>
       </div>
       <div class="p-3 bg-slate-50 rounded-xl">
         <p class="text-xs text-slate-400 font-semibold uppercase mb-1">Confidence</p>
@@ -1339,7 +1572,13 @@
         </p>
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
-        <span class="hidden sm:inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${stcls}">${stlabel}</span>
+        <div class="flex flex-col items-end gap-1">
+          <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold ${stcls}">${stlabel}</span>
+          ${r.authority_status === 'RESOLVED' ? 
+            `<span class="px-2 py-0.5 rounded-md bg-green-100 text-green-700 text-[9px] font-bold uppercase flex items-center gap-1"><i data-lucide="check" class="w-2.5 h-2.5"></i> Resolved</span>` : 
+            `<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[9px] font-bold uppercase">Pending Action</span>`
+          }
+        </div>
         ${r.status === 'PENDING_REVIEW' ? `
           <button onclick="event.stopPropagation(); approveReview('${r.id}')" title="Approve for action" class="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 border border-amber-100 transition-colors flex items-center gap-1 px-2">
             <i data-lucide="check-circle" class="w-4 h-4"></i>
@@ -1348,6 +1587,10 @@
               const hasDraft = emailReports.some(d => !d.sent && (d.body || d.draft));
               return hasDraft ? 'Send' : 'Approve';
             })()}</span>
+          </button>` : ''}
+        ${currentUser && currentUser.role === 'AUTHORITY' && r.authority_status === 'PENDING' ? `
+          <button onclick="event.stopPropagation(); resolveReport('${r.id}')" title="Resolve issue" class="p-1.5 rounded-lg bg-green-50 hover:bg-green-100 text-green-600 border border-green-100 transition-colors">
+            <i data-lucide="check-circle" class="w-4 h-4"></i>
           </button>` : ''}
         <button onclick="event.stopPropagation(); deleteReport('${r.id}')" title="Delete report" class="p-1.5 rounded-lg bg-slate-50 hover:bg-red-50 text-slate-500 hover:text-red-600 border border-slate-100 transition-colors">
           <i data-lucide="trash-2" class="w-4 h-4"></i>
@@ -1359,8 +1602,8 @@
 
     function updateHeaderStats() {
       document.getElementById('hdr-total').textContent = reports.length;
-      document.getElementById('hdr-pending').textContent = reports.filter(r => ['RECEIVED', 'PROCESSING', 'ANALYZED', 'PENDING_REVIEW'].includes(r.status)).length;
-      document.getElementById('hdr-actioned').textContent = reports.filter(r => r.status === 'ACTIONED').length;
+      document.getElementById('hdr-pending').textContent = reports.filter(r => r.authority_status === 'PENDING').length;
+      document.getElementById('hdr-resolved').textContent = reports.filter(r => r.authority_status === 'RESOLVED').length;
     }
 
     // ══════════════════════════════════════════════════════════════

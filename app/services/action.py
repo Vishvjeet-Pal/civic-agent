@@ -117,6 +117,9 @@ async def run_action(report_id: uuid.UUID, db: AsyncSession, redis: aioredis.Red
                         address=resolved_address
                     )
                     
+                    # Save assigned department emails to report
+                    report.assigned_department_emails = list(set(d["to"] for d in drafts))
+                    
                     report.action_result = {
                          **(report.action_result or {}),
                          "send_civic_report": drafts
