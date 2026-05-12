@@ -10,7 +10,7 @@ import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
-from app.db.models import DeadLetterQueue, LifecycleEvent, Report, ReportStatus
+from app.db.models import DeadLetterQueue, LifecycleEvent, Report, ReportStatus, User
 from app.schemas.report import ActionPlan, PerceptionResult
 from app.services.groq_client import get_tool_calls
 from app.services.mcp_tools import (
@@ -61,6 +61,10 @@ async def run_action(report_id: uuid.UUID, db: AsyncSession, redis: aioredis.Red
 
     plan = ActionPlan.model_validate(report.action_plan)
     perception = PerceptionResult.model_validate(report.perception_result)
+
+    # Fetch reporter email for From field
+    reporter = await db.get(User, report.reporter_id) if report.reporter_id else None
+    reporter_email = reporter.email if reporter else None
 
     try:
         tool_calls= await get_tool_calls(plan, perception)
@@ -147,7 +151,8 @@ async def run_action(report_id: uuid.UUID, db: AsyncSession, redis: aioredis.Red
                             plan=plan,
                             perception=perception,
                             address=resolved_address,
-                            draft=res
+                            draft=res,
+                            from_email=reporter_email
                         )
                         updated_results.append({**res, **send_res, "sent": True})
                         any_new_sent = True

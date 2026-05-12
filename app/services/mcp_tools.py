@@ -10,11 +10,13 @@ import smtplib
 import uuid
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 from typing import Any 
 import httpx
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.schemas.report import ActionPlan, PerceptionResult
+from app.services.image_store import load_image
 
 logger = get_logger(__name__)
 
@@ -150,6 +152,10 @@ def _build_email_body(plan: ActionPlan, perception: PerceptionResult, address: s
     return f"""
     <html><body style="font-family:sans-serif;max-width:600px">
     <h2 style="color:#c0392b">Civic Issue Report — {plan.issue_type.title()}</h2>
+    
+    <div style="margin-bottom:20px; border-radius:12px; overflow:hidden; border:1px solid #eee; background:#f9f9f9">
+        <img src="cid:report_image" data-secure-src="/api/v1/reports/{plan.report_id}/image" style="width:100%; max-width:600px; display:block" alt="Reported Image">
+    </div>
     <table style="border-collapse:collapse;width:100%">
       <tr><td style="padding:6px;color:#666">Report ID</td>
           <td style="padding:6px"><code>{plan.report_id}</code></td></tr>
@@ -235,7 +241,8 @@ async def send_civic_report(
     plan: ActionPlan, 
     perception: PerceptionResult, 
     address: str | None = None,
-    draft: dict[str, Any] | None = None
+    draft: dict[str, Any] | None = None,
+    from_email: str | None = None
 ) -> dict[str, Any]:
     """Send a formatted civic report email."""
 
@@ -256,13 +263,43 @@ async def send_civic_report(
         to_email = draft["to"]
         body = draft["body"]
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = settings.smtp_user
+    msg = MIMEMultipart("related")
+    alt = MIMEMultipart("alternative")
+    msg.attach(alt)
+    
+    from email.header import Header
+    msg["Subject"] = Header(subject, "utf-8")
+    msg["From"] = from_email or settings.smtp_user
     msg["To"] = to_email
     msg["X-Report_ID"] = str(plan.report_id)
 
-    msg.attach(MIMEText(body, "html"))
+    # 1. Restore cid:report_image if the frontend replaced it with a blob URL
+    import re
+    if 'data-secure-src' in body:
+        def _fix_img_src(match):
+            tag = match.group(0)
+            if 'data-secure-src' in tag:
+                if 'src=' in tag:
+                    return re.sub(r'src=["\'][^"\']*["\']', 'src="cid:report_image"', tag)
+                else:
+                    return tag.replace('<img', '<img src="cid:report_image"')
+            return tag
+        body = re.sub(r'<img[^>]+>', _fix_img_src, body)
+
+    alt.attach(MIMEText(body, "html", "utf-8"))
+
+    # 2. Attach image if exists
+    img_data = load_image(plan.report_id)
+    if img_data:
+        image_bytes, mime_type = img_data
+        subtype = mime_type.split('/')[-1]
+        logger.info("email_attaching_image", report_id=str(plan.report_id), size=len(image_bytes), subtype=subtype)
+        img = MIMEImage(image_bytes, _subtype=subtype)
+        img.add_header('Content-ID', '<report_image>')
+        img.add_header('Content-Disposition', 'inline', filename=f"report_{plan.report_id}.jpg")
+        msg.attach(img)
+    else:
+        logger.warning("email_image_not_found", report_id=str(plan.report_id))
 
     loop = asyncio.get_running_loop()
 

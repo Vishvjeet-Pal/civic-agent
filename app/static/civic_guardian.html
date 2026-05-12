@@ -446,7 +446,7 @@
       <!-- Address Input -->
       <div class="mt-6 space-y-3">
         <label class="text-sm font-medium text-slate-700 flex items-center gap-2">
-          <i data-lucide="map-pin" class="w-4 h-4 text-emerald-600"></i> Location Details (Optional)
+          <i data-lucide="map-pin" class="w-4 h-4 text-emerald-600"></i> Location Details (Mandatory)
         </label>
         <div class="relative">
           <input type="text" id="address-input" placeholder="Enter incident address or coordinates..."
@@ -457,8 +457,16 @@
             <i data-lucide="navigation" class="w-3.5 h-3.5 text-emerald-600"></i> Use My Location
           </button>
         </div>
-        <p class="text-[11px] text-slate-400">Providing an address helps our AI verify the location faster.</p>
+        <p class="text-[11px] text-slate-400">An address is required to process your report.</p>
       </div>
+      
+      <div id="upload-action" class="mt-6 hidden">
+        <button id="submit-report-btn" onclick="submitReportWithValidation()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-200 transition-all flex items-center justify-center gap-2 group">
+           <i data-lucide="zap" class="w-5 h-5 group-hover:scale-110 transition-transform"></i>
+           Submit Civic Report
+        </button>
+      </div>
+
       <div id="preview-area" class="hidden mt-4"></div>
       </section>
   
@@ -646,6 +654,7 @@
     document.getElementById('api-url-display').textContent = API_BASE || '(Relative /)';
 
     let reports = [];
+    let selectedFile = null;
     let filterStatus = 'all';
     let pollInterval = null;
     let pollReportId = null;
@@ -673,6 +682,29 @@
         handleLogout();
       }
       return res;
+    }
+
+    async function loadSecureImage(url, imgElement) {
+      if (!url) return;
+      try {
+        const fullUrl = url.startsWith('http') ? url : `${API_BASE}${url}`;
+        const res = await authedFetch(fullUrl);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        imgElement.src = objectUrl;
+        // Optional: revoke to save memory, but keep for a bit in case of re-renders
+        imgElement.dataset.blobUrl = objectUrl; 
+      } catch (e) {
+        console.error('Secure image load failed:', e);
+        imgElement.classList.add('flex', 'items-center', 'justify-center', 'bg-slate-100', 'text-slate-400', 'text-xs');
+        imgElement.parentElement.innerHTML = `
+          <div class="w-full h-48 bg-slate-100 flex flex-col items-center justify-center gap-2 text-slate-400">
+            <i data-lucide="image-off" class="w-8 h-8"></i>
+            <p class="text-[10px] font-medium">Failed to load secure image</p>
+          </div>`;
+        lucide.createIcons();
+      }
     }
     const authOverlay = document.getElementById('auth-overlay');
     const mainApp = document.getElementById('main-app');
@@ -1096,11 +1128,13 @@
     fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
 
     async function handleFile(file) {
-      const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+      const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
       if (!allowed.includes(file.type)) {
         showToast('Please upload a JPG, PNG, or WebP image.', 'error');
         return;
       }
+
+      selectedFile = file;
 
       // Preview
       const preview = document.getElementById('preview-area');
@@ -1118,15 +1152,29 @@
     </div>
   `;
       preview.classList.remove('hidden');
+      document.getElementById('upload-action').classList.remove('hidden');
       lucide.createIcons();
+    }
+
+    async function submitReportWithValidation() {
+      if (!selectedFile) {
+        showToast('Please select an image first.', 'error');
+        return;
+      }
+
+      const address = document.getElementById('address-input').value.trim();
+      if (!address) {
+        showToast('Please enter an address for the incident.', 'error');
+        document.getElementById('address-input').focus();
+        return;
+      }
 
       // Show processing
       showProcessing();
       setStep(1, 'active');
 
       try {
-        const address = document.getElementById('address-input').value.trim();
-        const data = await apiSubmitReport(file, address);
+        const data = await apiSubmitReport(selectedFile, address);
         const reportId = data.id;
         setStep(1, 'done');
 
@@ -1134,25 +1182,34 @@
         reports.unshift({
           id: reportId,
           status: data.status,
-          original_filename: file.name,
-          created_at: data.created_at,
+          original_filename: selectedFile.name,
+          provided_address: address,
+          created_at: data.created_at || new Date().toISOString(),
           confidence_score: null,
           perception_result: null,
           action_plan: null,
           action_result: null,
         });
+
         renderDashboard();
         updateHeaderStats();
 
         // Show result preview immediately
         showResultPreview(reportId, data);
 
+        // Reset
+        selectedFile = null;
+        document.getElementById('address-input').value = '';
+        document.getElementById('preview-area').classList.add('hidden');
+        document.getElementById('upload-action').classList.add('hidden');
+
         // Start polling
         startPolling(reportId);
 
-      } catch (err) {
-        setStep(1, 'error');
-        showToast(`Submit failed: ${err.message}`, 'error');
+      } catch (e) {
+        console.error('Submission failed:', e);
+        showToast(e.message || 'Submission failed', 'error');
+        setStep(1, 'failed');
         hideProcessing();
       }
     }
@@ -1360,6 +1417,11 @@
   `).join('');
 
       document.getElementById('results-content').innerHTML = `
+    ${full.image_url ? `
+    <div class="mb-5 rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-50">
+      <img data-secure-src="${full.image_url}" alt="Reported issue" class="w-full h-48 object-cover hover:scale-105 transition-transform duration-500 opacity-0 transition-opacity duration-300" onload="this.classList.remove('opacity-0')">
+    </div>` : ''}
+
     <div class="grid grid-cols-2 gap-3">
       <div class="p-3 bg-slate-50 rounded-xl">
         <p class="text-xs text-slate-400 font-semibold uppercase mb-1">Issue Type</p>
@@ -1433,9 +1495,12 @@
       </button>
       <p class="text-[10px] text-slate-400 text-center mt-2 uppercase tracking-widest font-semibold italic">Manual Review Required — Review analysis before proceeding</p>
     </div>` : ''}
-
   `;
       lucide.createIcons();
+      // Load secure images
+      document.querySelectorAll('#results-content img[data-secure-src]').forEach(img => {
+        loadSecureImage(img.dataset.secureSrc, img);
+      });
     }
 
     function updateResultStatus(status) {
@@ -1667,6 +1732,11 @@
       ${plan.severity ? `<span class="px-2 py-0.5 rounded text-xs font-semibold sev-${plan.severity.toLowerCase()}">${plan.severity.toUpperCase()}</span>` : ''}
     </div>
 
+    ${r.image_url ? `
+    <div class="rounded-2xl overflow-hidden border border-slate-200 shadow-sm mb-4 bg-slate-50">
+      <img data-secure-src="${r.image_url}" alt="Reported issue" class="w-full h-48 object-cover opacity-0 transition-opacity duration-300" onload="this.classList.remove('opacity-0')">
+    </div>` : ''}
+
     <div class="p-3 bg-slate-50 rounded-xl">
       <p class="text-xs text-slate-400 uppercase font-semibold mb-1">File</p>
       <p class="text-sm font-medium">${r.original_filename || r.filename || '—'}</p>
@@ -1770,6 +1840,7 @@
           }).join('')}
         </div>`;
       }
+      
       return html;
     })()}
 
@@ -1785,86 +1856,38 @@
       </div>
     </div>` : ''}
 
-    ${issues.length ? `
     <div class="p-3 bg-slate-50 rounded-xl">
-      <p class="text-xs text-slate-400 uppercase font-semibold mb-2">Detected Issues (${issues.length})</p>
+      <p class="text-xs text-slate-400 uppercase font-semibold mb-2">Pipeline Lifecycle</p>
       <div class="space-y-2">
-        ${issues.map(iss => `
-          <div class="bg-white border border-slate-200 rounded-lg p-2.5">
-            <div class="flex items-center justify-between mb-0.5">
-              <span class="text-sm font-semibold capitalize">${iss.type}</span>
-              <span class="text-xs text-slate-500">Sev ${iss.severity}/5</span>
-            </div>
-            <p class="text-xs text-slate-400">${iss.description}</p>
-          </div>`).join('')}
-      </div>
-    </div>` : ''}
-
-    ${plan.context_summary ? `
-    <div class="p-3 bg-slate-50 rounded-xl">
-      <p class="text-xs text-slate-400 uppercase font-semibold mb-1">Legal Summary</p>
-      <p class="text-sm text-slate-600 leading-relaxed">
-        ${(() => {
-          let summary = plan.context_summary;
-          if (action.resolved_address) {
-            // Replace coordinates (lat, lon) with the address
-            const coordsRegex = /-?\d+\.\d+,\s*-?\d+\.\d+/g;
-            summary = summary.replace(coordsRegex, action.resolved_address);
-          }
-          return summary;
-        })()}
-      </p>
-    </div>` : ''}
-
-    ${action.tools_executed?.length ? `
-    <div class="p-3 bg-slate-50 rounded-xl">
-      <p class="text-xs text-slate-400 uppercase font-semibold mb-2">MCP Tools Executed</p>
-      <div class="flex flex-wrap gap-1.5">
-        ${action.tools_executed.map(t => `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-xs font-medium mono">${t}</span>`).join('')}
-      </div>
-    </div>` : ''}
-
-    ${lifecycle.length ? `
-    <div class="p-3 bg-slate-50 rounded-xl">
-      <p class="text-xs text-slate-400 uppercase font-semibold mb-3">Pipeline Lifecycle</p>
-      <div class="space-y-0">
         ${lifecycle.map((ev, i) => `
-          <div class="flex gap-3 text-xs">
+          <div class="flex gap-3">
             <div class="flex flex-col items-center">
-              <div class="w-2 h-2 rounded-full bg-emerald-500 mt-1 flex-shrink-0"></div>
-              ${i < lifecycle.length - 1 ? '<div class="w-px flex-1 bg-slate-200 mt-1 mb-1 mx-auto"></div>' : ''}
+              <div class="w-2 h-2 rounded-full bg-emerald-500 mt-1.5"></div>
+              ${i < lifecycle.length - 1 ? '<div class="w-px flex-1 bg-slate-200 my-1"></div>' : ''}
             </div>
             <div class="pb-2">
-              <span class="font-semibold text-slate-700">${ev.to || ev.to_status || ''}</span>
-              <span class="text-slate-400 ml-1">${ev.at ? new Date(ev.at).toLocaleTimeString() : ''}</span>
-              <p class="text-slate-400 mt-0.5 text-xs">${ev.detail || ''}</p>
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] font-bold text-slate-700 uppercase">${ev.to || ev.to_status}</span>
+                <span class="text-[9px] text-slate-400">${new Date(ev.at).toLocaleTimeString()}</span>
+              </div>
+              <p class="text-[10px] text-slate-500">${ev.detail || ''}</p>
             </div>
-          </div>`).join('')}
+          </div>
+        `).join('')}
       </div>
-    </div>` : ''}
-
-    <div class="pt-4 flex gap-3">
-      ${r.status === 'PENDING_REVIEW' ? `
-      <button onclick="approveReview('${r.id}')" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-semibold px-4 py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm shadow-lg shadow-amber-100">
-        <i data-lucide="check-circle" class="w-4 h-4"></i>
-        ${(() => {
-          const emailReports = Array.isArray(action.send_civic_report) ? action.send_civic_report : (action.send_civic_report ? [action.send_civic_report] : []);
-          const hasDraft = emailReports.some(d => !d.sent && (d.body || d.draft));
-          return hasDraft ? `Approve & Send ${emailReports.length > 1 ? emailReports.length + ' ' : ''}Emails` : 'Approve for Action';
-        })()}
-      </button>` : ''}
-      <button onclick="deleteReport('${r.id}')" class="flex-1 border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-semibold px-4 py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm">
-        <i data-lucide="trash-2" class="w-4 h-4"></i> Delete Report
-      </button>
     </div>
 
     <div class="p-3 bg-slate-50 rounded-xl">
       <p class="text-xs text-slate-400 uppercase font-semibold mb-1">Report ID</p>
       <p class="mono text-xs text-slate-500 break-all">${r.id}</p>
     </div>
-
   `;
+
       lucide.createIcons();
+      // Load secure images
+      container.querySelectorAll('img[data-secure-src]').forEach(img => {
+        loadSecureImage(img.dataset.secureSrc, img);
+      });
     }
 
     // ══════════════════════════════════════════════════════════════

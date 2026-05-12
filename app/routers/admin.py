@@ -162,6 +162,7 @@ async def get_full_report(report_id: str, db: AsyncSession = Depends(get_db)):
         "perception_result": report.perception_result,
         "action_plan": report.action_plan,
         "action_result": report.action_result,
+        "image_url": report.image_url,
         "lifecycle": [
             {
                 "from": e.from_status.value if e.from_status else None,

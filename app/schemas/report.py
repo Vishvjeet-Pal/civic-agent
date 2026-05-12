@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator, AliasCh
 
 class IncomingReport(BaseModel):
     filename: str = Field(..., min_length=1, max_length=255)
-    content_type: str = Field(..., pattern=r"^image/(jpeg|png|webp)$")
+    content_type: str = Field(..., pattern=r"^image/(jpeg|jpg|png|webp)$")
     address: str | None = None
 
 class BoundingBox(BaseModel):
@@ -91,5 +91,6 @@ class ReportDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     authority_status: str | None = None
+    image_url: str | None = None
 
     model_config = {"from_attributes": True}

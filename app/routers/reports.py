@@ -9,13 +9,14 @@ from app.core.redis import get_redis
 from app.db.session import get_db
 from app.db.models import DeadLetterQueue, LifecycleEvent, Report, ReportStatus, ReportSubscriber, User, UserRole, AuthorityStatus
 from app.schemas.report import IncomingReport, ReportResponse, ReportDetail
-from app.services.image_store import save_image, delete_image
+from app.services.image_store import save_image, delete_image, load_image
 from app.services.auth import get_current_user
+from fastapi.responses import Response
 
 logger=get_logger(__name__)
 router=APIRouter(prefix="/reports", tags=["reports"])
 
-ALLOWED_CONTENT_TYPES={"image/jpeg", "image/png", "image/webp"}
+ALLOWED_CONTENT_TYPES={"image/jpeg", "image/jpg", "image/png", "image/webp"}
 MAX_FILE_SIZE_BYTES=15*1024*1024
 
 async def _check_rate_limit(client_id: str, redis: aioredis.Redis) -> None:
@@ -33,7 +34,7 @@ async def _check_rate_limit(client_id: str, redis: aioredis.Redis) -> None:
 @router.post("/", response_model=ReportResponse, status_code=status.HTTP_202_ACCEPTED)
 async def submit_report(
     file: UploadFile = File(...),
-    address: str | None = Form(None),
+    address: str = Form(...),
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
     current_user: User = Depends(get_current_user)
@@ -89,6 +90,9 @@ async def submit_report(
 
     try:
         saved_path = save_image(report.id, contents, file.content_type)
+        report.image_path = saved_path
+        db.add(report)
+        await db.commit()
     except OSError as exc:
         logger.error("image_store_failed", report_id=str(report.id), error=str(exc))
         raise HTTPException(
@@ -131,6 +135,42 @@ async def get_report_status(
         message=f"Report is currently {report.status.value.lower()}.",
         created_at=report.created_at,
     )
+
+@router.get("/{report_id}/image")
+async def get_report_image(
+    report_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+    ):
+    """Fetch the original image for a report."""
+    report = await db.get(Report, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    # Simple check: authorities or the reporter/subscriber can see it
+    is_authorized = False
+    if current_user.role == UserRole.AUTHORITY:
+        is_authorized = True
+    elif report.reporter_id == current_user.id:
+        is_authorized = True
+    else:
+        sub_check = await db.execute(
+            select(ReportSubscriber).where(
+                and_(ReportSubscriber.report_id == report_id, ReportSubscriber.user_id == current_user.id)
+            )
+        )
+        if sub_check.scalar_one_or_none():
+            is_authorized = True
+
+    if not is_authorized:
+        raise HTTPException(status_code=403, detail="Not authorized to view this image")
+
+    img_data = load_image(report_id)
+    if not img_data:
+        raise HTTPException(status_code=404, detail="Image file not found")
+    
+    image_bytes, mime_type = img_data
+    return Response(content=image_bytes, media_type=mime_type)
 
 @router.get("/", response_model=list[ReportDetail])
 async def list_reports(

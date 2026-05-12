@@ -77,6 +77,12 @@ class Report(Base):
     subscribers: Mapped[list["ReportSubscriber"]] = relationship(
         back_populates="report", cascade="all, delete-orphan"
     )
+    
+    @property
+    def image_url(self) -> str | None:
+        if self.image_path:
+            return f"/api/v1/reports/{self.id}/image"
+        return None
 
     __table_args__ = (
         Index("ix_reports_status", "status"),

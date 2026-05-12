@@ -64,8 +64,11 @@ services:
         condition: service_healthy
       redis: 
         condition: service_healthy
+    environment:
+      - IMAGE_STORE_PATH=/images
     volumes:
       - ./app:/app/app
+      - imagedata:/images
       - ./municipal_docs:/app/municipal_docs:ro  
     extra_hosts:
       - "host.docker.internal:host-gateway"
